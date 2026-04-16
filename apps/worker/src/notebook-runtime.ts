@@ -18,6 +18,8 @@ import {
 
 type WorkerSandbox = Awaited<ReturnType<typeof Sandbox.create>>;
 
+const DEFAULT_NOTEBOOK_PROJECT_ROOT = "/home/user/project";
+
 function toProviderPid(value?: string) {
   if (!value) {
     return undefined;
@@ -46,6 +48,14 @@ async function runCommand(
 
     throw error;
   }
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+export function resolveNotebookProjectRoot(session: SandboxSession) {
+  return session.metadata.projectRoot?.trim() || DEFAULT_NOTEBOOK_PROJECT_ROOT;
 }
 
 async function ensureJupyterDependencies(
@@ -102,6 +112,20 @@ export async function ensureNotebookJupyterRuntime(
   }
 
   await ensureJupyterDependencies(sandbox, timeoutMs);
+  const projectRoot = resolveNotebookProjectRoot(session);
+  const ensureProjectRootResult = await runCommand(
+    sandbox,
+    `mkdir -p ${shellQuote(projectRoot)}`,
+    timeoutMs,
+  );
+
+  if (ensureProjectRootResult.exitCode !== 0) {
+    throw new Error(
+      ensureProjectRootResult.stderr.trim() ||
+        ensureProjectRootResult.error ||
+        `Unable to prepare notebook project root at ${projectRoot}.`,
+    );
+  }
 
   const existingServerPid = toProviderPid(existingRuntime?.serverPid);
   if (existingServerPid) {
@@ -122,7 +146,7 @@ export async function ensureNotebookJupyterRuntime(
       "--ServerApp.password=''",
       `--ServerApp.token='${token}'`,
       "--ContentsManager.allow_hidden=True",
-      `--ServerApp.root_dir='${session.metadata.projectRoot ?? "/home/user/project"}'`,
+      `--ServerApp.root_dir=${shellQuote(projectRoot)}`,
       "--no-browser",
       "--ip=0.0.0.0",
       `--port=${WORKSPACE_NOTEBOOK_JUPYTER_PORT}`,

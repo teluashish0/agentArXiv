@@ -6,33 +6,13 @@ import type {
   WorkspaceNotebookOutputReference,
   WorkspaceReference,
 } from "@agentarxiv/core";
-import type { INotebookProps } from "@datalayer/jupyter-react/notebook";
-import type { IJupyterLabThemeProps } from "@datalayer/jupyter-react/theme";
 import {
   Fragment,
-  useEffect,
   useMemo,
-  useRef,
   useState,
-  type ComponentType,
-  type PropsWithChildren,
+  type ReactNode,
 } from "react";
 import type { WorkspaceClientModel } from "./workspace/workspace-view-model";
-import { createWorkspaceNotebookServiceManager } from "../lib/workspace-jupyter-service-manager";
-
-type NotebookComponentType = ComponentType<PropsWithChildren<INotebookProps>>;
-type NotebookThemeComponentType = ComponentType<
-  PropsWithChildren<IJupyterLabThemeProps>
->;
-
-type NotebookRuntime = {
-  Notebook: NotebookComponentType;
-  JupyterReactTheme: NotebookThemeComponentType;
-};
-
-function NotebookThemeFallback({ children }: PropsWithChildren<object>) {
-  return <>{children}</>;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -100,6 +80,337 @@ function getJoinedStringValue(value: unknown) {
   }
 
   return undefined;
+}
+
+const PYTHON_KEYWORDS = new Set([
+  "False",
+  "None",
+  "True",
+  "and",
+  "as",
+  "assert",
+  "async",
+  "await",
+  "break",
+  "class",
+  "continue",
+  "def",
+  "del",
+  "elif",
+  "else",
+  "except",
+  "finally",
+  "for",
+  "from",
+  "global",
+  "if",
+  "import",
+  "in",
+  "is",
+  "lambda",
+  "nonlocal",
+  "not",
+  "or",
+  "pass",
+  "raise",
+  "return",
+  "try",
+  "while",
+  "with",
+  "yield",
+]);
+
+const JAVASCRIPT_KEYWORDS = new Set([
+  "as",
+  "await",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "from",
+  "function",
+  "if",
+  "implements",
+  "import",
+  "in",
+  "instanceof",
+  "interface",
+  "let",
+  "new",
+  "null",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "readonly",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "type",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+]);
+
+type NotebookSyntaxName = "javascript" | "json" | "jsx" | "python" | "tsx" | "typescript";
+
+function normalizeLanguageName(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : undefined;
+}
+
+function resolveNotebookSyntaxName(languageName?: string): NotebookSyntaxName | null {
+  switch (languageName) {
+    case "javascript":
+    case "js":
+      return "javascript";
+    case "json":
+      return "json";
+    case "jsx":
+      return "jsx";
+    case "python":
+    case "python3":
+    case "py":
+      return "python";
+    case "typescript":
+    case "ts":
+      return "typescript";
+    case "tsx":
+      return "tsx";
+    default:
+      return null;
+  }
+}
+
+function getNotebookLanguageName(
+  document: WorkspaceClientModel["notebook"]["document"],
+) {
+  const metadata = isRecord(document.metadata) ? document.metadata : undefined;
+  const languageInfo = isRecord(metadata?.language_info)
+    ? metadata.language_info
+    : undefined;
+  const kernelspec = isRecord(metadata?.kernelspec)
+    ? metadata.kernelspec
+    : undefined;
+
+  return (
+    normalizeLanguageName(languageInfo?.name) ??
+    normalizeLanguageName(kernelspec?.language) ??
+    normalizeLanguageName(kernelspec?.name)
+  );
+}
+
+function createNotebookSyntaxPattern(syntaxName: NotebookSyntaxName) {
+  switch (syntaxName) {
+    case "json":
+      return /("(?:\\.|[^"\\])*")(?=\s*:)|("(?:\\.|[^"\\])*")|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[()[\]{},.:;]/gm;
+    case "javascript":
+    case "jsx":
+    case "tsx":
+    case "typescript":
+      return /(\/\/.*$|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b[A-Za-z_$][\w$]*(?=\s*:\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[^,\n]+))|\b(?:as|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|enum|export|extends|false|finally|for|from|function|if|implements|import|in|instanceof|interface|let|new|null|package|private|protected|public|readonly|return|super|switch|this|throw|true|try|type|typeof|var|void|while|with|yield)\b|\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|[()[\]{},.:;]|=>|===|!==|==|!=|<=|>=|\+\+|--|&&|\|\||[-+/*%=<>!&|^~?]+)/gm;
+    case "python":
+      return /(#.*$|"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b[A-Za-z_]\w*(?=\s*=)|\b(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b|\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?j?\b|[()[\]{},.:;]|[-+/*%=<>!&|^~]+)/gm;
+  }
+}
+
+function getNotebookTokenClassName(
+  match: RegExpExecArray,
+  syntaxName: NotebookSyntaxName,
+) {
+  const token = match[0];
+
+  if (syntaxName === "json") {
+    if (match[1]) {
+      return "tok-propertyName";
+    }
+
+    if (match[2]) {
+      return "tok-string";
+    }
+
+    if (/^(true|false)$/.test(token)) {
+      return "tok-bool";
+    }
+
+    if (token === "null") {
+      return "tok-atom";
+    }
+
+    if (/^-?\d/.test(token)) {
+      return "tok-number";
+    }
+
+    if (/^[()[\]{},.:;]$/.test(token)) {
+      return "tok-punctuation";
+    }
+
+    return undefined;
+  }
+
+  if (syntaxName === "python") {
+    if (token.startsWith("#")) {
+      return "tok-comment";
+    }
+
+    if (
+      token.startsWith('"') ||
+      token.startsWith("'")
+    ) {
+      return "tok-string";
+    }
+
+    if (PYTHON_KEYWORDS.has(token)) {
+      if (token === "True" || token === "False") {
+        return "tok-bool";
+      }
+
+      if (token === "None") {
+        return "tok-atom";
+      }
+
+      return "tok-keyword";
+    }
+
+    if (/^\d/.test(token)) {
+      return "tok-number";
+    }
+
+    if (/^[()[\]{},.:;]$/.test(token)) {
+      return "tok-punctuation";
+    }
+
+    if (/^[-+/*%=<>!&|^~]+$/.test(token)) {
+      return "tok-operator";
+    }
+
+    if (/^[A-Za-z_]\w*$/.test(token)) {
+      return "tok-variableName tok-definition";
+    }
+
+    return undefined;
+  }
+
+  if (
+    token.startsWith("//") ||
+    token.startsWith("/*")
+  ) {
+    return "tok-comment";
+  }
+
+  if (
+    token.startsWith('"') ||
+    token.startsWith("'") ||
+    token.startsWith("`")
+  ) {
+    return "tok-string";
+  }
+
+  if (JAVASCRIPT_KEYWORDS.has(token)) {
+    if (token === "true" || token === "false") {
+      return "tok-bool";
+    }
+
+    if (token === "null") {
+      return "tok-atom";
+    }
+
+    return "tok-keyword";
+  }
+
+  if (/^\d/.test(token)) {
+    return "tok-number";
+  }
+
+  if (/^[()[\]{},.:;]$/.test(token)) {
+    return "tok-punctuation";
+  }
+
+  if (/^(=>|===|!==|==|!=|<=|>=|\+\+|--|&&|\|\||[-+/*%=<>!&|^~?]+)$/.test(token)) {
+    return "tok-operator";
+  }
+
+  if (/^[A-Za-z_$][\w$]*$/.test(token)) {
+    return "tok-propertyName";
+  }
+
+  return undefined;
+}
+
+function renderHighlightedNotebookSource(
+  source: string,
+  languageName?: string,
+): ReactNode {
+  if (!source) {
+    return "No cell content.";
+  }
+
+  const syntaxName = resolveNotebookSyntaxName(languageName);
+
+  if (!syntaxName) {
+    return source;
+  }
+
+  const pattern = createNotebookSyntaxPattern(syntaxName);
+  const fragments: ReactNode[] = [];
+  let fragmentIndex = 0;
+  let lastIndex = 0;
+
+  for (const match of source.matchAll(pattern)) {
+    const token = match[0];
+    const matchIndex = match.index ?? 0;
+
+    if (matchIndex > lastIndex) {
+      fragments.push(
+        <Fragment key={`segment-${fragmentIndex++}`}>
+          {source.slice(lastIndex, matchIndex)}
+        </Fragment>,
+      );
+    }
+
+    const className = getNotebookTokenClassName(match, syntaxName);
+
+    fragments.push(
+      className ? (
+        <span className={className} key={`segment-${fragmentIndex++}`}>
+          {token}
+        </span>
+      ) : (
+        <Fragment key={`segment-${fragmentIndex++}`}>{token}</Fragment>
+      ),
+    );
+
+    lastIndex = matchIndex + token.length;
+  }
+
+  if (lastIndex < source.length) {
+    fragments.push(
+      <Fragment key={`segment-${fragmentIndex++}`}>
+        {source.slice(lastIndex)}
+      </Fragment>,
+    );
+  }
+
+  return fragments.length > 0 ? fragments : source;
 }
 
 function getOutputMimeType(
@@ -235,32 +546,31 @@ function getOutputPreviewImageSrc(
   return undefined;
 }
 
-function formatExecutionStatus(value: unknown, fallback: string) {
-  if (typeof value !== "string" || !value.trim()) {
-    return fallback;
+function formatNotebookInputPrompt(
+  cell: WorkspaceClientModel["notebook"]["document"]["cells"][number],
+) {
+  if (cell.cell_type !== "code") {
+    return "";
   }
 
-  const normalized = value.replace(/[_-]+/g, " ").trim();
-
-  if (!normalized) {
-    return fallback;
-  }
-
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  return `In [${cell.execution_count ?? " "}]:`;
 }
 
-function formatCellTypeLabel(
+function formatNotebookOutputPrompt(
   cell: WorkspaceClientModel["notebook"]["document"]["cells"][number],
-  cellIndex: number,
+  output: NonNullable<
+    WorkspaceClientModel["notebook"]["document"]["cells"][number]["outputs"]
+  >[number],
 ) {
-  const prefix =
-    cell.cell_type === "code"
-      ? "Code"
-      : cell.cell_type === "markdown"
-        ? "Markdown"
-        : "Raw";
+  if (cell.cell_type !== "code") {
+    return "";
+  }
 
-  return `${prefix} cell ${cellIndex + 1}`;
+  if (output.output_type === "execute_result" && cell.execution_count != null) {
+    return `Out[${cell.execution_count}]:`;
+  }
+
+  return "";
 }
 
 function buildNotebookCellReference(
@@ -329,25 +639,6 @@ function buildNotebookOutputReference(
   };
 }
 
-function formatExecutionDate(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) {
-    return null;
-  }
-
-  const parsedDate = new Date(value);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return null;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(parsedDate);
-}
-
 function normalizeNotebookDocument(
   document: WorkspaceClientModel["notebook"]["document"],
 ) {
@@ -374,57 +665,6 @@ function normalizeNotebookDocument(
   };
 }
 
-function syncExecutionBadges(
-  cellElement: HTMLElement,
-  cell: WorkspaceClientModel["notebook"]["document"]["cells"][number],
-  agentsById: Map<string, WorkspaceClientModel["agents"][number]>,
-) {
-  const existingHost = cellElement.querySelector<HTMLElement>(
-    ".workspace-jupyter-inline-meta",
-  );
-
-  if (cell.cell_type !== "code") {
-    existingHost?.remove();
-    return;
-  }
-
-  const metadata = getCellAgentArxivMetadata(cell);
-  const executingAgentId =
-    typeof metadata.lastExecutingAgentId === "string"
-      ? metadata.lastExecutingAgentId
-      : undefined;
-  const executingAgent = executingAgentId
-    ? agentsById.get(executingAgentId)
-    : undefined;
-  const executedAtLabel =
-    formatExecutionDate(metadata.lastExecutedAt) ?? "Not run";
-
-  let host = existingHost;
-
-  if (!host) {
-    host = document.createElement("div");
-    host.className = "workspace-jupyter-inline-meta";
-    host.innerHTML = `
-      <span class="workspace-jupyter-cell-chip" data-chip="agent"></span>
-      <span class="workspace-jupyter-cell-chip workspace-jupyter-cell-chip-muted" data-chip="date"></span>
-    `;
-
-    const inputWrapper = cellElement.querySelector(".jp-Cell-inputWrapper");
-    cellElement.insertBefore(host, inputWrapper ?? cellElement.firstChild);
-  }
-
-  const agentChip = host.querySelector<HTMLElement>('[data-chip="agent"]');
-  const dateChip = host.querySelector<HTMLElement>('[data-chip="date"]');
-
-  if (agentChip) {
-    agentChip.textContent = executingAgent?.name ?? "No execution";
-  }
-
-  if (dateChip) {
-    dateChip.textContent = executedAtLabel;
-  }
-}
-
 export function WorkspaceExperimentsPane({
   workspace,
   onReferenceCapture,
@@ -432,522 +672,292 @@ export function WorkspaceExperimentsPane({
   workspace: WorkspaceClientModel;
   onReferenceCapture: (reference: WorkspaceReference) => void;
 }) {
-  const serviceManager = useMemo(
-    () => createWorkspaceNotebookServiceManager(),
-    [],
-  );
-  const notebookShellRef = useRef<HTMLDivElement | null>(null);
-  const notebookFrameRef = useRef<HTMLDivElement | null>(null);
-  const [notebookHeight, setNotebookHeight] = useState(0);
-  const [notebookRuntime, setNotebookRuntime] = useState<NotebookRuntime | null>(null);
-  const [notebookRuntimeFailed, setNotebookRuntimeFailed] = useState(false);
-  const [notebookRenderState, setNotebookRenderState] = useState<
-    "loading" | "ready" | "fallback"
-  >(
-    workspace.notebook.document.cells.length > 0 ? "loading" : "fallback",
-  );
   const notebookDocument = useMemo(
     () => normalizeNotebookDocument(workspace.notebook.document),
     [workspace.notebook.document],
   );
-  const agentsById = useMemo(
-    () => new Map(workspace.agents.map((agent) => [agent.id, agent])),
-    [workspace.agents],
+  const notebookLanguageName = useMemo(
+    () => getNotebookLanguageName(notebookDocument),
+    [notebookDocument],
   );
-  const linkedEvidenceCount = useMemo(
-    () =>
-      workspace.notebookEvidence.filter((item) => item.status === "linked")
-        .length,
-    [workspace.notebookEvidence],
-  );
-  const codeCellCount = useMemo(
-    () =>
-      notebookDocument.cells.filter((cell) => cell.cell_type === "code").length,
-    [notebookDocument.cells],
-  );
-  const showFallbackNotebook =
-    notebookRuntimeFailed || notebookRenderState === "fallback";
-  const showLoadingState =
-    !showFallbackNotebook &&
-    notebookRenderState === "loading" &&
-    notebookDocument.cells.length > 0;
-  const NotebookComponent = notebookRuntime?.Notebook ?? null;
-  const NotebookTheme = notebookRuntime?.JupyterReactTheme ?? NotebookThemeFallback;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadNotebookRuntime() {
-      try {
-        const [{ Notebook }, { JupyterReactTheme }] = await Promise.all([
-          import("@datalayer/jupyter-react/notebook"),
-          import("@datalayer/jupyter-react/theme"),
-        ]);
-
-        if (!cancelled) {
-          setNotebookRuntime({
-            Notebook: Notebook as NotebookRuntime["Notebook"],
-            JupyterReactTheme: JupyterReactTheme as NotebookRuntime["JupyterReactTheme"],
-          });
-          setNotebookRuntimeFailed(false);
-        }
-      } catch (error) {
-        console.error("Unable to load notebook runtime for experiments pane", error);
-
-        if (!cancelled) {
-          setNotebookRuntime(null);
-          setNotebookRuntimeFailed(true);
-          setNotebookRenderState("fallback");
-        }
-      }
-    }
-
-    void loadNotebookRuntime();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    setNotebookRenderState(
-      notebookDocument.cells.length > 0 && !notebookRuntimeFailed
-        ? "loading"
-        : "fallback",
-    );
-  }, [notebookDocument.cells.length, notebookRuntimeFailed, workspace.notebook.currentRevision]);
-
-  useEffect(() => {
-    const shell = notebookShellRef.current;
-
-    if (!shell) {
-      return;
-    }
-
-    const syncNotebookHeight = () => {
-      const nextHeight = Math.max(shell.clientHeight, 480);
-
-      setNotebookHeight((currentHeight) =>
-        currentHeight === nextHeight ? currentHeight : nextHeight,
-      );
-    };
-
-    syncNotebookHeight();
-    const observer = new ResizeObserver(() => {
-      window.requestAnimationFrame(syncNotebookHeight);
-    });
-    observer.observe(shell);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    const frame = notebookFrameRef.current;
-
-    if (!frame) {
-      return;
-    }
-
-    const applyReferenceTargets = () => {
-      const cellElements = frame.querySelectorAll<HTMLElement>(
-        ".jp-Notebook .jp-Cell",
-      );
-
-      if (cellElements.length > 0) {
-        setNotebookRenderState((currentState) =>
-          currentState === "ready" ? currentState : "ready",
-        );
-      }
-
-      cellElements.forEach((cellElement, cellIndex) => {
-        const cell = notebookDocument.cells[cellIndex];
-
-        if (!cell) {
-          return;
-        }
-
-        syncExecutionBadges(cellElement, cell, agentsById);
-        cellElement.dataset.workspaceCellId = cell.id;
-        cellElement.title = "Click to reference this notebook cell in chat";
-
-        const outputElements = cellElement.querySelectorAll<HTMLElement>(
-          ".jp-OutputArea-child",
-        );
-
-        outputElements.forEach((outputElement, outputIndex) => {
-          const output = cell.outputs?.[outputIndex];
-
-          if (!output) {
-            return;
-          }
-
-          outputElement.dataset.workspaceOutputId = output.id;
-          outputElement.title = "Click to reference this output in chat";
-        });
-      });
-    };
-
-    const handleNotebookClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-
-      if (!target) {
-        return;
-      }
-
-      const outputElement = target.closest<HTMLElement>(
-        "[data-workspace-output-id]",
-      );
-
-      if (outputElement) {
-        const cellElement = outputElement.closest<HTMLElement>(
-          "[data-workspace-cell-id]",
-        );
-        const cellId = cellElement?.dataset.workspaceCellId;
-        const outputId = outputElement.dataset.workspaceOutputId;
-        const cell = notebookDocument.cells.find((item) => item.id === cellId);
-        const outputIndex =
-          cell?.outputs?.findIndex((item) => item.id === outputId) ?? -1;
-        const output =
-          outputIndex >= 0 ? cell?.outputs?.[outputIndex] : undefined;
-
-        if (cell && output && outputIndex >= 0) {
-          const reference = buildNotebookOutputReference(
-            workspace,
-            cell,
-            output,
-            outputIndex,
-          );
-
-          if (reference) {
-            onReferenceCapture(reference);
-            return;
-          }
-        }
-      }
-
-      const cellElement = target.closest<HTMLElement>(
-        "[data-workspace-cell-id]",
-      );
-      const cellId = cellElement?.dataset.workspaceCellId;
-      const cell = notebookDocument.cells.find((item) => item.id === cellId);
-
-      if (cell) {
-        onReferenceCapture(buildNotebookCellReference(workspace, cell));
-      }
-    };
-
-    if (notebookDocument.cells.length === 0) {
-      setNotebookRenderState("fallback");
-      return;
-    }
-
-    if (!NotebookComponent) {
-      return;
-    }
-
-    const observer = new MutationObserver(() => {
-      window.requestAnimationFrame(applyReferenceTargets);
-    });
-    const fallbackTimeoutId = window.setTimeout(() => {
-      const renderedCellCount = frame.querySelectorAll(".jp-Notebook .jp-Cell")
-        .length;
-
-      if (renderedCellCount === 0) {
-        setNotebookRenderState((currentState) =>
-          currentState === "ready" ? currentState : "fallback",
-        );
-      }
-    }, 900);
-
-    applyReferenceTargets();
-    observer.observe(frame, {
-      childList: true,
-      subtree: true,
-    });
-    frame.addEventListener("click", handleNotebookClick);
-
-    return () => {
-      window.clearTimeout(fallbackTimeoutId);
-      observer.disconnect();
-      frame.removeEventListener("click", handleNotebookClick);
-    };
-  }, [NotebookComponent, agentsById, notebookDocument, onReferenceCapture, workspace]);
+  const [isNotebookScrolled, setIsNotebookScrolled] = useState(false);
 
   return (
-    <div
-      className="workspace-experiments-notebook-shell"
-      ref={notebookShellRef}
-    >
+    <div className="workspace-experiments-notebook-shell">
       <div className="workspace-experiments-theme">
-        <NotebookTheme
-          backgroundColor="#0b0c0f"
-          colormode="dark"
+        <div
+          className={[
+            "workspace-experiments-notebook-frame",
+            isNotebookScrolled ? "is-scrolled" : "",
+          ]
+            .join(" ")
+            .trim()}
         >
-          <div
-            className="workspace-experiments-notebook-frame"
-            ref={notebookFrameRef}
-          >
-            <div className="workspace-experiments-title" aria-hidden="true">
-              <div className="workspace-experiments-title-inner">
-                <Image
-                  alt=""
-                  aria-hidden="true"
-                  className="workspace-experiments-title-logo"
-                  height={1613}
-                  priority
-                  src="/sandbox-logo.png"
-                  width={1613}
-                />
-                <span className="workspace-experiments-title-text">
-                  Sandbox
-                </span>
-              </div>
-            </div>
-            <div
-              className="workspace-experiments-top-fade"
-              aria-hidden="true"
-            />
-
-            {showLoadingState ? (
-              <div
-                className="workspace-experiments-loading-state"
-                role="status"
-              >
-                <div className="workspace-experiments-loading-card">
-                  <p className="workspace-experiments-loading-eyebrow">
-                    Opening notebook
-                  </p>
-                  <p className="workspace-experiments-loading-copy">
-                    Loading the workspace experiment history and recent outputs.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-
-            {showFallbackNotebook ? (
-              <div
-                className="workspace-experiments-fallback"
-                role="region"
-                aria-label="Experiments notebook snapshot"
-              >
-                <div className="workspace-experiments-fallback-inner">
-                  <section className="workspace-experiments-overview">
-                    <div className="workspace-experiments-overview-copy">
-                      <p className="workspace-experiments-eyebrow">
-                        Notebook snapshot
-                      </p>
-                      <h2>Workspace experiments</h2>
-                      <p>
-                        Review notebook cells, recent execution context, and
-                        linked evidence directly from the experiments tab.
-                      </p>
-                    </div>
-                    <div className="workspace-experiments-stats">
-                      <article className="workspace-experiments-stat-card">
-                        <span>Notebook cells</span>
-                        <strong>{notebookDocument.cells.length}</strong>
-                      </article>
-                      <article className="workspace-experiments-stat-card">
-                        <span>Code cells</span>
-                        <strong>{codeCellCount}</strong>
-                      </article>
-                      <article className="workspace-experiments-stat-card">
-                        <span>Linked evidence</span>
-                        <strong>{linkedEvidenceCount}</strong>
-                      </article>
-                    </div>
-                  </section>
-
-                  {notebookDocument.cells.length > 0 ? (
-                    <div className="workspace-experiments-cell-list">
-                      {notebookDocument.cells.map((cell, cellIndex) => {
-                        const metadata = getCellAgentArxivMetadata(cell);
-                        const agentName =
-                          typeof metadata.lastExecutingAgentId === "string"
-                            ? agentsById.get(metadata.lastExecutingAgentId)
-                                ?.name
-                            : undefined;
-                        const executedAtLabel =
-                          formatExecutionDate(metadata.lastExecutedAt) ??
-                          "Not run";
-                        const executionStatus = formatExecutionStatus(
-                          metadata.lastExecutionStatus,
-                          cell.cell_type === "code"
-                            ? "Not run"
-                            : "Notebook cell",
-                        );
-                        const cellReference = buildNotebookCellReference(
-                          workspace,
-                          cell,
-                        );
-
-                        return (
-                          <article
-                            className="workspace-experiments-cell-card"
-                            key={cell.id}
-                          >
-                            <div className="workspace-experiments-card-header">
-                              <div className="workspace-experiments-card-copy">
-                                <p className="workspace-experiments-card-kicker">
-                                  {formatCellTypeLabel(cell, cellIndex)}
-                                </p>
-                                <h3>{cellReference.title}</h3>
-                              </div>
-                              <button
-                                className="workspace-experiments-reference-button"
-                                type="button"
-                                onClick={() => {
-                                  onReferenceCapture(cellReference);
-                                }}
-                              >
-                                Reference cell
-                              </button>
-                            </div>
-
-                            <div className="workspace-experiments-chip-row">
-                              <span className="workspace-jupyter-cell-chip">
-                                {executionStatus}
-                              </span>
-                              <span className="workspace-jupyter-cell-chip workspace-jupyter-cell-chip-muted">
-                                {agentName ??
-                                  (cell.cell_type === "code"
-                                    ? "No execution"
-                                    : "Notebook cell")}
-                              </span>
-                              <span className="workspace-jupyter-cell-chip workspace-jupyter-cell-chip-muted">
-                                {executedAtLabel}
-                              </span>
-                            </div>
-
-                            <pre className="workspace-experiments-source-block">
-                              <code>{cell.source.join("") || "No cell content."}</code>
-                            </pre>
-
-                            {cell.outputs?.length ? (
-                              <div className="workspace-experiments-output-list">
-                                {cell.outputs.map((output, outputIndex) => {
-                                  const outputReference =
-                                    buildNotebookOutputReference(
-                                      workspace,
-                                      cell,
-                                      output,
-                                      outputIndex,
-                                    );
-                                  const outputMimeType =
-                                    getOutputMimeType(output) ??
-                                    output.output_type;
-                                  const outputPreview =
-                                    getOutputPreviewText(output);
-                                  const outputImageSrc =
-                                    getOutputPreviewImageSrc(output);
-
-                                  return (
-                                    <section
-                                      className={[
-                                        "workspace-experiments-output-card",
-                                        output.output_type === "error"
-                                          ? "is-error"
-                                          : "",
-                                      ]
-                                        .join(" ")
-                                        .trim()}
-                                      key={output.id}
-                                    >
-                                      <div className="workspace-experiments-card-header">
-                                        <div className="workspace-experiments-card-copy">
-                                          <p className="workspace-experiments-card-kicker">
-                                            {outputMimeType}
-                                          </p>
-                                          <h4>
-                                            {outputReference?.title ??
-                                              `Output ${outputIndex + 1}`}
-                                          </h4>
-                                        </div>
-                                        {outputReference ? (
-                                          <button
-                                            className="workspace-experiments-reference-button"
-                                            type="button"
-                                            onClick={() => {
-                                              onReferenceCapture(
-                                                outputReference,
-                                              );
-                                            }}
-                                          >
-                                            Reference output
-                                          </button>
-                                        ) : null}
-                                      </div>
-
-                                      {outputImageSrc ? (
-                                        <Image
-                                          alt={`Notebook output ${outputIndex + 1}`}
-                                          className="workspace-experiments-output-image"
-                                          height={900}
-                                          src={outputImageSrc}
-                                          unoptimized
-                                          width={1600}
-                                        />
-                                      ) : null}
-
-                                      {outputPreview ? (
-                                        <pre className="workspace-experiments-output-block">
-                                          <code>{outputPreview}</code>
-                                        </pre>
-                                      ) : (
-                                        <p className="workspace-experiments-output-empty">
-                                          Output is available in the notebook
-                                          history.
-                                        </p>
-                                      )}
-                                    </section>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                          </article>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="workspace-experiments-empty-state">
-                      <p className="workspace-experiments-eyebrow">
-                        No notebook activity yet
-                      </p>
-                      <h3>The experiments notebook is ready for the first run.</h3>
-                      <p>
-                        Cells and outputs will appear here as agents execute
-                        notebook work and link evidence back into the workspace.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-
-            <div
-              className={[
-                "workspace-experiments-notebook-host",
-                showFallbackNotebook || !NotebookComponent ? "is-hidden" : "",
-              ]
-                .join(" ")
-                .trim()}
-              aria-hidden={showFallbackNotebook || !NotebookComponent}
-            >
-              {NotebookComponent ? (
-                <NotebookComponent
-                  height={notebookHeight > 0 ? `${notebookHeight}px` : "100%"}
-                  id={`workspace-notebook-${workspace.id}`}
-                  maxHeight={notebookHeight > 0 ? `${notebookHeight}px` : "100%"}
-                  nbformat={notebookDocument as never}
-                  readonly
-                  serviceManager={serviceManager}
-                />
-              ) : null}
+          <div className="workspace-experiments-title" aria-hidden="true">
+            <div className="workspace-experiments-title-inner">
+              <Image
+                alt=""
+                aria-hidden="true"
+                className="workspace-experiments-title-logo"
+                height={1613}
+                priority
+                src="/sandbox-logo.png"
+                width={1613}
+              />
+              <span className="workspace-experiments-title-text">
+                Sandbox
+              </span>
             </div>
           </div>
-        </NotebookTheme>
+          <div
+            className="workspace-experiments-top-fade"
+            aria-hidden="true"
+          />
+
+          <div
+            className="workspace-experiments-fallback"
+            role="region"
+            aria-label="Experiments notebook snapshot"
+          >
+            <div className="jp-NotebookPanel">
+              <div className="jp-Notebook">
+                <div
+                  className="jp-WindowedPanel-outer"
+                  onScroll={(event) => {
+                    const nextScrolled = event.currentTarget.scrollTop > 0;
+
+                    setIsNotebookScrolled((currentScrolled) =>
+                      currentScrolled === nextScrolled
+                        ? currentScrolled
+                        : nextScrolled,
+                    );
+                  }}
+                >
+                  <div className="jp-WindowedPanel-viewport workspace-experiments-fallback-inner">
+                    {notebookDocument.cells.length > 0 ? (
+                      <div className="workspace-experiments-cell-list">
+                        {notebookDocument.cells.map((cell) => {
+                          const cellReference = buildNotebookCellReference(
+                            workspace,
+                            cell,
+                          );
+
+                          return (
+                            <article
+                              className={[
+                                "jp-Cell",
+                                cell.cell_type === "code"
+                                  ? "jp-CodeCell"
+                                  : cell.cell_type === "markdown"
+                                    ? "jp-MarkdownCell"
+                                    : "jp-RawCell",
+                                cell.outputs?.length ? "" : "jp-mod-noOutputs",
+                                "workspace-experiments-jupyter-cell",
+                              ]
+                                .join(" ")
+                                .trim()}
+                              key={cell.id}
+                            >
+                              <div className="jp-Cell-inputWrapper">
+                                <div className="jp-InputArea jp-Cell-inputArea">
+                                  <div
+                                    className={[
+                                      "jp-InputPrompt",
+                                      cell.cell_type !== "code" ? "is-empty" : "",
+                                    ]
+                                      .join(" ")
+                                      .trim()}
+                                    aria-hidden="true"
+                                  >
+                                    {formatNotebookInputPrompt(cell)}
+                                  </div>
+                                  <div
+                                    className="jp-InputArea-editor workspace-experiments-jupyter-input-shell"
+                                    role="button"
+                                    tabIndex={0}
+                                    title="Reference this notebook cell in chat"
+                                    onClick={() => {
+                                      onReferenceCapture(cellReference);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (
+                                        event.key === "Enter" ||
+                                        event.key === " "
+                                      ) {
+                                        event.preventDefault();
+                                        onReferenceCapture(cellReference);
+                                      }
+                                    }}
+                                  >
+                                    <pre className="workspace-experiments-jupyter-editor-content">
+                                      <code
+                                        className={
+                                          cell.cell_type === "code"
+                                            ? [
+                                                "workspace-experiments-jupyter-code",
+                                                resolveNotebookSyntaxName(
+                                                  notebookLanguageName,
+                                                )
+                                                  ? `is-${resolveNotebookSyntaxName(
+                                                      notebookLanguageName,
+                                                    )}`
+                                                  : "",
+                                              ]
+                                                .join(" ")
+                                                .trim()
+                                            : undefined
+                                        }
+                                      >
+                                        {cell.cell_type === "code"
+                                          ? renderHighlightedNotebookSource(
+                                              cell.source.join(""),
+                                              notebookLanguageName,
+                                            )
+                                          : cell.source.join("") ||
+                                            "No cell content."}
+                                      </code>
+                                    </pre>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {cell.outputs?.length ? (
+                                <div className="jp-Cell-outputWrapper">
+                                  <div className="jp-Cell-outputArea">
+                                    <div className="jp-OutputArea">
+                                      {cell.outputs.map((output, outputIndex) => {
+                                        const outputReference =
+                                          buildNotebookOutputReference(
+                                            workspace,
+                                            cell,
+                                            output,
+                                            outputIndex,
+                                          );
+                                        const outputMimeType =
+                                          getOutputMimeType(output) ??
+                                          output.output_type;
+                                        const outputPreview =
+                                          getOutputPreviewText(output);
+                                        const outputImageSrc =
+                                          getOutputPreviewImageSrc(output);
+
+                                        return (
+                                          <div
+                                            className="jp-OutputArea-child"
+                                            key={output.id}
+                                          >
+                                            <div
+                                              className={[
+                                                "jp-OutputPrompt",
+                                                !formatNotebookOutputPrompt(
+                                                  cell,
+                                                  output,
+                                                )
+                                                  ? "is-empty"
+                                                  : "",
+                                              ]
+                                                .join(" ")
+                                                .trim()}
+                                              aria-hidden="true"
+                                            >
+                                              {formatNotebookOutputPrompt(
+                                                cell,
+                                                output,
+                                              )}
+                                            </div>
+                                            <section
+                                              className={[
+                                                "jp-OutputArea-output",
+                                                "workspace-experiments-jupyter-output-shell",
+                                                output.output_type === "error"
+                                                  ? "is-error"
+                                                  : "",
+                                              ]
+                                                .join(" ")
+                                                .trim()}
+                                              role={
+                                                outputReference
+                                                  ? "button"
+                                                  : undefined
+                                              }
+                                              tabIndex={
+                                                outputReference ? 0 : undefined
+                                              }
+                                              title={
+                                                outputReference
+                                                  ? "Reference this notebook output in chat"
+                                                  : undefined
+                                              }
+                                              onClick={() => {
+                                                if (outputReference) {
+                                                  onReferenceCapture(
+                                                    outputReference,
+                                                  );
+                                                }
+                                              }}
+                                              onKeyDown={(event) => {
+                                                if (
+                                                  outputReference &&
+                                                  (event.key === "Enter" ||
+                                                    event.key === " ")
+                                                ) {
+                                                  event.preventDefault();
+                                                  onReferenceCapture(
+                                                    outputReference,
+                                                  );
+                                                }
+                                              }}
+                                            >
+                                              {outputImageSrc ? (
+                                                <Image
+                                                  alt={`Notebook output ${outputIndex + 1}`}
+                                                  className="workspace-experiments-output-image"
+                                                  height={900}
+                                                  src={outputImageSrc}
+                                                  unoptimized
+                                                  width={1600}
+                                                />
+                                              ) : null}
+
+                                              {outputPreview ? (
+                                                <pre className="workspace-experiments-jupyter-output-content">
+                                                  <code>{outputPreview}</code>
+                                                </pre>
+                                              ) : outputMimeType ? (
+                                                <p className="workspace-experiments-output-empty">
+                                                  {outputMimeType}
+                                                </p>
+                                              ) : null}
+                                            </section>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="workspace-experiments-empty-state">
+                        <p className="workspace-experiments-eyebrow">
+                          No notebook activity yet
+                        </p>
+                        <h3>The experiments notebook is ready for the first run.</h3>
+                        <p>
+                          Cells and outputs will appear here as agents execute
+                          notebook work and link evidence back into the workspace.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

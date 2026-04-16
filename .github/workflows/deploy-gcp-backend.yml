@@ -1,0 +1,257 @@
+name: Deploy Backend to GCP
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/deploy-gcp-backend.yml
+      - scripts/gcp/**
+      - apps/chatkit-server/**
+      - apps/mcp/**
+      - apps/worker/**
+      - packages/artifacts/**
+      - packages/core/**
+      - packages/db/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - turbo.json
+      - .dockerignore
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-backend-production
+  cancel-in-progress: true
+
+env:
+  AGENTARXIV_GCP_PROJECT_ID: ${{ vars.AGENTARXIV_GCP_PROJECT_ID }}
+  AGENTARXIV_GCP_REGION: ${{ vars.AGENTARXIV_GCP_REGION }}
+  AGENTARXIV_GCP_ARTIFACT_REPO: ${{ vars.AGENTARXIV_GCP_ARTIFACT_REPO }}
+  AGENTARXIV_GCP_CHATKIT_SERVICE: ${{ vars.AGENTARXIV_GCP_CHATKIT_SERVICE }}
+  AGENTARXIV_GCP_MCP_SERVICE: ${{ vars.AGENTARXIV_GCP_MCP_SERVICE }}
+  AGENTARXIV_GCP_WORKER_SERVICE: ${{ vars.AGENTARXIV_GCP_WORKER_SERVICE }}
+  AGENTARXIV_GCP_DB_INSTANCE: ${{ vars.AGENTARXIV_GCP_DB_INSTANCE }}
+  AGENTARXIV_GCP_DB_NAME: ${{ vars.AGENTARXIV_GCP_DB_NAME }}
+  AGENTARXIV_GCP_DB_USER: ${{ vars.AGENTARXIV_GCP_DB_USER }}
+  AGENTARXIV_GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.AGENTARXIV_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+  AGENTARXIV_GCP_SERVICE_ACCOUNT: ${{ vars.AGENTARXIV_GCP_SERVICE_ACCOUNT }}
+  AGENTARXIV_APP_URL: ${{ vars.AGENTARXIV_APP_URL }}
+  AGENTARXIV_CHATKIT_GCS_BUCKET: ${{ vars.AGENTARXIV_CHATKIT_GCS_BUCKET }}
+  AGENTARXIV_CHATKIT_GCS_PREFIX: ${{ vars.AGENTARXIV_CHATKIT_GCS_PREFIX }}
+  AGENTARXIV_ALPHAXIV_MCP_URL: ${{ vars.AGENTARXIV_ALPHAXIV_MCP_URL }}
+  AGENTARXIV_WORKER_ENABLE_RUN_ADVANCEMENT: ${{ vars.AGENTARXIV_WORKER_ENABLE_RUN_ADVANCEMENT }}
+  AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK: ${{ vars.AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK }}
+  OPENAI_CHATKIT_MODEL: ${{ vars.OPENAI_CHATKIT_MODEL }}
+  AGENTARXIV_GCP_DB_PASSWORD: ${{ secrets.AGENTARXIV_GCP_DB_PASSWORD }}
+  AGENTARXIV_CHATKIT_SHARED_SECRET: ${{ secrets.AGENTARXIV_CHATKIT_SHARED_SECRET }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+  E2B_SANDBOX_TEMPLATE: ${{ secrets.E2B_SANDBOX_TEMPLATE }}
+  STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+  STRIPE_SANDBOX_METER_EVENT_NAME: ${{ secrets.STRIPE_SANDBOX_METER_EVENT_NAME }}
+  AGENTARXIV_ALPHAXIV_BEARER_TOKEN: ${{ secrets.AGENTARXIV_ALPHAXIV_BEARER_TOKEN }}
+
+jobs:
+  validate:
+    name: Validate backend before deploy
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://agentarxiv:agentarxiv@127.0.0.1:15432/agentarxiv?schema=public
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install ChatKit server dependencies
+        run: python -m pip install -r apps/chatkit-server/requirements.txt
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Build backend packages
+        run: |
+          pnpm --filter @agentarxiv/artifacts build
+          pnpm --filter @agentarxiv/core build
+          pnpm --filter @agentarxiv/db build
+          pnpm --filter @agentarxiv/mcp build
+          pnpm --filter @agentarxiv/worker build
+
+      - name: Validate ChatKit server
+        run: |
+          pnpm --filter @agentarxiv/chatkit-server lint
+          pnpm --filter @agentarxiv/chatkit-server typecheck
+
+      - name: Run backend tests
+        run: |
+          pnpm --filter @agentarxiv/core test
+          pnpm --filter @agentarxiv/db test
+          pnpm --filter @agentarxiv/mcp test
+          pnpm --filter @agentarxiv/worker test
+
+  deploy:
+    name: Build, push, and deploy
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify deploy configuration
+        shell: bash
+        run: |
+          required_vars=(
+            AGENTARXIV_GCP_PROJECT_ID
+            AGENTARXIV_GCP_REGION
+            AGENTARXIV_GCP_ARTIFACT_REPO
+            AGENTARXIV_GCP_CHATKIT_SERVICE
+            AGENTARXIV_GCP_MCP_SERVICE
+            AGENTARXIV_GCP_WORKER_SERVICE
+            AGENTARXIV_GCP_DB_INSTANCE
+            AGENTARXIV_GCP_DB_NAME
+            AGENTARXIV_GCP_DB_USER
+            AGENTARXIV_APP_URL
+            AGENTARXIV_CHATKIT_GCS_BUCKET
+            AGENTARXIV_GCP_WORKLOAD_IDENTITY_PROVIDER
+            AGENTARXIV_GCP_SERVICE_ACCOUNT
+          )
+          required_secrets=(
+            AGENTARXIV_GCP_DB_PASSWORD
+            AGENTARXIV_CHATKIT_SHARED_SECRET
+            OPENAI_API_KEY
+            E2B_API_KEY
+            E2B_SANDBOX_TEMPLATE
+            STRIPE_SECRET_KEY
+            STRIPE_SANDBOX_METER_EVENT_NAME
+          )
+
+          missing=0
+          for key in "${required_vars[@]}" "${required_secrets[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "::error::Missing required GitHub Actions configuration: ${key}"
+              missing=1
+            fi
+          done
+
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.AGENTARXIV_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.AGENTARXIV_GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.AGENTARXIV_GCP_PROJECT_ID }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure Artifact Registry Docker auth
+        run: gcloud auth configure-docker "${AGENTARXIV_GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Verify required GCP resources exist
+        shell: bash
+        run: |
+          gcloud artifacts repositories describe "${AGENTARXIV_GCP_ARTIFACT_REPO}" \
+            --project "${AGENTARXIV_GCP_PROJECT_ID}" \
+            --location "${AGENTARXIV_GCP_REGION}" >/dev/null
+
+          gcloud sql instances describe "${AGENTARXIV_GCP_DB_INSTANCE}" \
+            --project "${AGENTARXIV_GCP_PROJECT_ID}" >/dev/null
+
+          gcloud storage buckets describe "gs://${AGENTARXIV_CHATKIT_GCS_BUCKET}" \
+            --project "${AGENTARXIV_GCP_PROJECT_ID}" >/dev/null
+
+      - name: Compute image tags
+        id: image-meta
+        shell: bash
+        run: |
+          image_base="${AGENTARXIV_GCP_REGION}-docker.pkg.dev/${AGENTARXIV_GCP_PROJECT_ID}/${AGENTARXIV_GCP_ARTIFACT_REPO}"
+          image_tag="${GITHUB_SHA::12}"
+          echo "chatkit_image=${image_base}/chatkit:${image_tag}" >>"$GITHUB_OUTPUT"
+          echo "mcp_image=${image_base}/mcp:${image_tag}" >>"$GITHUB_OUTPUT"
+          echo "worker_image=${image_base}/worker:${image_tag}" >>"$GITHUB_OUTPUT"
+
+      - name: Build and push ChatKit image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/chatkit-server/Dockerfile
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: ${{ steps.image-meta.outputs.chatkit_image }}
+
+      - name: Build and push MCP image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/mcp/Dockerfile
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: ${{ steps.image-meta.outputs.mcp_image }}
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/worker/Dockerfile
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: ${{ steps.image-meta.outputs.worker_image }}
+
+      - name: Deploy Cloud Run services
+        id: deploy
+        env:
+          AGENTARXIV_GCP_CHATKIT_IMAGE: ${{ steps.image-meta.outputs.chatkit_image }}
+          AGENTARXIV_GCP_MCP_IMAGE: ${{ steps.image-meta.outputs.mcp_image }}
+          AGENTARXIV_GCP_WORKER_IMAGE: ${{ steps.image-meta.outputs.worker_image }}
+        run: scripts/gcp/deploy-cloud-run-services.sh
+
+      - name: Smoke test deployed services
+        shell: bash
+        run: |
+          curl --fail --silent --show-error "${{ steps.deploy.outputs.chatkit_url }}/health" >/dev/null
+          curl --fail --silent --show-error "${{ steps.deploy.outputs.mcp_url }}/health" >/dev/null
+
+          worker_revision="$(gcloud run services describe "${AGENTARXIV_GCP_WORKER_SERVICE}" \
+            --project "${AGENTARXIV_GCP_PROJECT_ID}" \
+            --region "${AGENTARXIV_GCP_REGION}" \
+            --format='value(status.latestReadyRevisionName)')"
+
+          if [[ -z "${worker_revision}" ]]; then
+            echo "::error::Worker service does not report a ready revision."
+            exit 1
+          fi
+
+          echo "Verified worker revision ${worker_revision}."

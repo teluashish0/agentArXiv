@@ -4,15 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { useClerk, useSignIn, useSignUp, useUser } from "@clerk/nextjs";
-import { useSignIn as useLegacySignIn } from "@clerk/nextjs/legacy";
-import { ArrowLeft, Mail } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { getAccountDisplayLabel } from "@/lib/account-display";
-import { isGoogleSignInEnabled } from "@/lib/public-config";
 import { AgentsContent } from "./agents-content";
 import { SiteLegalFooter, TermsLink } from "./site-legal";
+import { SupportErrorMessage } from "./support-error-message";
 
 type AuthMode = "login" | "signup";
-type AuthMethod = "options" | "email";
 type EmailStep = "form" | "verify";
 
 function extractClerkMessage(error: unknown) {
@@ -48,6 +46,10 @@ function appendRedirectParam(path: string, redirectTo?: string): string {
   return nextSearch ? `${pathname}?${nextSearch}` : pathname;
 }
 
+function getRedirectTarget(redirectTo?: string) {
+  return redirectTo || "/";
+}
+
 function GoogleMark() {
   return (
     <svg
@@ -76,7 +78,7 @@ function GoogleMark() {
   );
 }
 
-function AuthLanding({
+function EmailAuth({
   isLogin,
   isOauthPending,
   oauthError,
@@ -89,64 +91,6 @@ function AuthLanding({
   onGoogle: () => void;
   redirectTo?: string;
 }) {
-  const emailPath = appendRedirectParam(
-    isLogin ? "/sign-in?mode=login&method=email" : "/sign-in?method=email",
-    redirectTo,
-  );
-  const switchPath = appendRedirectParam(
-    isLogin ? "/sign-in" : "/sign-in?mode=login",
-    redirectTo,
-  );
-
-  return (
-    <>
-      <button
-        className="auth-oauth-button"
-        disabled={isOauthPending}
-        onClick={onGoogle}
-        type="button"
-      >
-        <GoogleMark />
-        <span>{isOauthPending ? "connecting to google" : "continue with google"}</span>
-      </button>
-
-      <div className="auth-divider-row">
-        <span className="auth-divider-line" />
-        <span className="auth-divider-text">or</span>
-        <span className="auth-divider-line" />
-      </div>
-
-      <Link className="auth-email-button" href={emailPath}>
-        <Mail className="auth-email-icon" absoluteStrokeWidth strokeWidth={1.9} />
-        <span>continue with email</span>
-      </Link>
-
-      <div className="auth-switch-row">
-        {isLogin ? "need an account?" : "already have an account?"}{" "}
-        <Link className="auth-switch-link" href={switchPath}>
-          {isLogin ? "join" : "login"}
-        </Link>
-      </div>
-
-      {!isLogin ? (
-        <p className="auth-form-note auth-form-note-legal">
-          by continuing, you agree to the{" "}
-          <TermsLink className="auth-inline-legal-link" />
-        </p>
-      ) : null}
-
-      {oauthError ? <p className="auth-error">{oauthError}</p> : null}
-    </>
-  );
-}
-
-function EmailAuth({
-  isLogin,
-  redirectTo,
-}: {
-  isLogin: boolean;
-  redirectTo?: string;
-}) {
   const router = useRouter();
   const { signIn, fetchStatus: signInFetchStatus } = useSignIn();
   const { signUp, fetchStatus: signUpFetchStatus } = useSignUp();
@@ -156,14 +100,9 @@ function EmailAuth({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const googleSignInEnabled = isGoogleSignInEnabled();
 
-  const optionsPath = appendRedirectParam(
-    isLogin ? "/sign-in?mode=login" : "/sign-in",
-    redirectTo,
-  );
   const switchPath = appendRedirectParam(
-    isLogin ? "/sign-in?method=email" : "/sign-in?mode=login&method=email",
+    isLogin ? "/sign-in" : "/sign-in?mode=login",
     redirectTo,
   );
   const isFetching = (isLogin ? signInFetchStatus : signUpFetchStatus) === "fetching";
@@ -218,6 +157,17 @@ function EmailAuth({
     }
   };
 
+  const handleReturnToForm = () => {
+    setCode("");
+    setSubmitError(null);
+    setStep("form");
+
+    const resetResult = isLogin ? signIn.reset() : signUp.reset();
+    void resetResult.catch(() => {
+      // Reset is best-effort here; the local UI state still moves back to the form.
+    });
+  };
+
   const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitError(null);
@@ -250,7 +200,13 @@ function EmailAuth({
         }
 
         if (signIn.status === "needs_client_trust") {
-          await signIn.mfa.sendEmailCode();
+          const verification = await signIn.mfa.sendEmailCode();
+
+          if (verification.error) {
+            setSubmitError(extractClerkMessage(verification.error));
+            return;
+          }
+
           setStep("verify");
           return;
         }
@@ -261,7 +217,13 @@ function EmailAuth({
           );
 
           if (emailCodeFactor) {
-            await signIn.mfa.sendEmailCode();
+            const verification = await signIn.mfa.sendEmailCode();
+
+            if (verification.error) {
+              setSubmitError(extractClerkMessage(verification.error));
+              return;
+            }
+
             setStep("verify");
             return;
           }
@@ -286,7 +248,13 @@ function EmailAuth({
         return;
       }
 
-      await signUp.verifications.sendEmailCode();
+      const verification = await signUp.verifications.sendEmailCode();
+
+      if (verification.error) {
+        setSubmitError(extractClerkMessage(verification.error));
+        return;
+      }
+
       setStep("verify");
     } catch (error) {
       setSubmitError(extractClerkMessage(error));
@@ -304,7 +272,12 @@ function EmailAuth({
           return;
         }
 
-        await signIn.mfa.verifyEmailCode({ code });
+        const verification = await signIn.mfa.verifyEmailCode({ code });
+
+        if (verification.error) {
+          setSubmitError(extractClerkMessage(verification.error));
+          return;
+        }
 
         if (signIn.status === "complete") {
           await finalizeNavigation(signIn);
@@ -320,7 +293,12 @@ function EmailAuth({
         return;
       }
 
-      await signUp.verifications.verifyEmailCode({ code });
+      const verification = await signUp.verifications.verifyEmailCode({ code });
+
+      if (verification.error) {
+        setSubmitError(extractClerkMessage(verification.error));
+        return;
+      }
 
       if (signUp.status === "complete") {
         await finalizeNavigation(signUp);
@@ -335,11 +313,33 @@ function EmailAuth({
 
   return (
     <div className="auth-email-flow">
-      {googleSignInEnabled ? (
-        <Link className="auth-back-link" href={optionsPath}>
+      {step === "verify" ? (
+        <button className="auth-back-link" onClick={handleReturnToForm} type="button">
           <ArrowLeft className="auth-back-icon" absoluteStrokeWidth strokeWidth={2.1} />
-          <span>back</span>
-        </Link>
+          <span>use another method</span>
+        </button>
+      ) : null}
+
+      {step === "form" ? (
+        <>
+          <button
+            className="auth-oauth-button"
+            disabled={isOauthPending}
+            onClick={onGoogle}
+            type="button"
+          >
+            <GoogleMark />
+            <span>{isOauthPending ? "connecting to google" : "continue with google"}</span>
+          </button>
+
+          <div className="auth-divider-row">
+            <span className="auth-divider-line" />
+            <span className="auth-divider-text">or</span>
+            <span className="auth-divider-line" />
+          </div>
+
+          {oauthError ? <SupportErrorMessage className="auth-error auth-error-inline" /> : null}
+        </>
       ) : null}
 
       {step === "form" ? (
@@ -403,7 +403,9 @@ function EmailAuth({
             </>
           ) : null}
 
-          {submitError ? <p className="auth-error auth-error-inline">{submitError}</p> : null}
+          {submitError ? (
+            <SupportErrorMessage className="auth-error auth-error-inline" />
+          ) : null}
         </form>
       ) : (
         <form className="auth-form" onSubmit={handleVerifySubmit}>
@@ -430,7 +432,9 @@ function EmailAuth({
             verify
           </button>
 
-          {submitError ? <p className="auth-error auth-error-inline">{submitError}</p> : null}
+          {submitError ? (
+            <SupportErrorMessage className="auth-error auth-error-inline" />
+          ) : null}
         </form>
       )}
 
@@ -504,7 +508,9 @@ function SignedInFlow({
               {isSigningOut ? "Logging Out..." : "Log Out"}
             </button>
 
-            {signOutError ? <p className="agents-error agents-account-error">{signOutError}</p> : null}
+            {signOutError ? (
+              <SupportErrorMessage className="agents-error agents-account-error" />
+            ) : null}
           </>
         }
       />
@@ -516,20 +522,18 @@ function SignedInFlow({
 
 export function SignInContent({
   mode,
-  method = "options",
   redirectTo,
 }: {
   mode: AuthMode;
-  method?: AuthMethod;
   redirectTo?: string;
 }) {
   const { isLoaded, isSignedIn } = useUser();
+  const { signIn, fetchStatus: signInFetchStatus } = useSignIn();
+  const { signUp, fetchStatus: signUpFetchStatus } = useSignUp();
   const isLogin = mode === "login";
-  const googleSignInEnabled = isGoogleSignInEnabled();
-  const isEmailMethod = method === "email" || !googleSignInEnabled;
-  const { isLoaded: isOauthLoaded, signIn: oauthSignIn } = useLegacySignIn();
   const [oauthError, setOauthError] = useState<string | null>(null);
-  const [isOauthPending, startOauthTransition] = useTransition();
+  const isOauthPending =
+    (isLogin ? signInFetchStatus : signUpFetchStatus) === "fetching";
 
   const heading = isLogin ? "login agentarxiv" : "join agentarxiv";
   const subheading = isLogin ? "sign in to continue" : "create an account to get started";
@@ -538,24 +542,32 @@ export function SignInContent({
     return <SignedInFlow redirectTo={redirectTo} />;
   }
 
-  const handleGoogle = () => {
-    if (!googleSignInEnabled || !isOauthLoaded || !oauthSignIn || isOauthPending) {
+  const handleGoogle = async () => {
+    if (isOauthPending) {
       return;
     }
 
     setOauthError(null);
 
-    startOauthTransition(() => {
-      void oauthSignIn
-        .authenticateWithRedirect({
-          strategy: "oauth_google",
-          redirectUrl: "/sign-in/sso-callback",
-          redirectUrlComplete: redirectTo || "/",
-        })
-        .catch((error: unknown) => {
-          setOauthError(extractClerkMessage(error));
-        });
-    });
+    try {
+      const result = isLogin
+        ? await signIn.sso({
+            strategy: "oauth_google",
+            redirectCallbackUrl: "/sign-in/sso-callback",
+            redirectUrl: getRedirectTarget(redirectTo),
+          })
+        : await signUp.sso({
+            strategy: "oauth_google",
+            redirectCallbackUrl: "/sign-in/sso-callback",
+            redirectUrl: getRedirectTarget(redirectTo),
+          });
+
+      if (result.error) {
+        setOauthError(extractClerkMessage(result.error));
+      }
+    } catch (error) {
+      setOauthError(extractClerkMessage(error));
+    }
   };
 
   return (
@@ -567,25 +579,16 @@ export function SignInContent({
         </header>
 
         <div className="auth-box">
-          <div
-            className={[
-              "auth-box-inner",
-              isEmailMethod ? "auth-box-inner-form" : "auth-box-inner-methods",
-            ]
-              .join(" ")
-              .trim()}
-          >
-            {isEmailMethod ? (
-              <EmailAuth isLogin={isLogin} redirectTo={redirectTo} />
-            ) : (
-              <AuthLanding
-                isLogin={isLogin}
-                isOauthPending={isOauthPending}
-                oauthError={oauthError}
-                onGoogle={handleGoogle}
-                redirectTo={redirectTo}
-              />
-            )}
+          <div className="auth-box-inner auth-box-inner-form">
+            <EmailAuth
+              isLogin={isLogin}
+              isOauthPending={isOauthPending}
+              oauthError={oauthError}
+              onGoogle={() => {
+                void handleGoogle();
+              }}
+              redirectTo={redirectTo}
+            />
           </div>
         </div>
       </div>

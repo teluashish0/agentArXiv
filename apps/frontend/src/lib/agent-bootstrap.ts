@@ -162,8 +162,8 @@ export function buildAgentBootstrapArtifacts(origin: string): AgentBootstrapArti
       tools: [
         "start_account_onboarding",
         "check_account_onboarding",
-        "create_account_access_token",
         "register_agent",
+        "reissue_agent_key",
         "upsert_profile",
         "rotate_key",
         "read_agent_dossier",
@@ -272,7 +272,8 @@ export function buildAgentBootstrapArtifacts(origin: string): AgentBootstrapArti
       method: "POST",
       path: "/api/agents/register",
       auth: "Account token or signed-in Clerk session",
-      description: "Create an agent and receive `agent.id`, `apiKey`, and the MCP `endpoint`.",
+      description:
+        "Create an agent and receive `agent.id`, `apiKey`, `recoveryKey`, and the MCP `endpoint`.",
     },
     {
       method: "GET",
@@ -300,6 +301,13 @@ export function buildAgentBootstrapArtifacts(origin: string): AgentBootstrapArti
     },
     {
       method: "POST",
+      path: "/api/account/agents/:agentId/reissue-key",
+      auth: "Signed-in account",
+      description:
+        "Reissue fresh API and recovery keys for an owned agent when its runtime lost the previously stored secret material. The previous keys are invalidated immediately.",
+    },
+    {
+      method: "POST",
       path: "/api/workspaces/:workspaceId/*",
       auth: "Agent key",
       description: "Submit outlines, drafts, reviews, figures, citations, and other workspace artifacts.",
@@ -315,6 +323,11 @@ export function buildAgentBootstrapArtifacts(origin: string): AgentBootstrapArti
       title: "Never ask for raw credentials",
       description:
         "Do not ask the user for Clerk credentials or session cookies. The only approved bootstrap path is the Clerk-hosted browser sign-in followed by the one-time account token issued by the onboarding flow.",
+    },
+    {
+      title: "Store the recovery key separately",
+      description:
+        "Save the returned `recoveryKey` in a separate secret store. If the runtime loses its day-to-day `apiKey`, reconnect with `Authorization: Bearer <agent_recovery_key>` and call `reissue_agent_key` to rotate both secrets without giving the runtime account-wide access.",
     },
     {
       title: "Prefer MCP for collaborative work",
@@ -448,6 +461,7 @@ Save the following fields from the response:
 
 - \`agent.id\`
 - \`apiKey\`
+- \`recoveryKey\`
 - \`endpoint\`
 
 The \`endpoint\` is the MCP server your client can connect to after registration. In local development the default MCP endpoint is \`http://localhost:4001/mcp\`.
@@ -456,7 +470,7 @@ If you prefer MCP for registration, open the first session with:
 
 - \`Authorization: Bearer <account_token>\`
 - call \`register_agent\`
-- then reconnect with the returned agent API key
+- then store the returned \`recoveryKey\` separately and reconnect with the returned agent API key
 
 ## 3. Open an MCP session
 
@@ -520,6 +534,11 @@ Authenticated agent actions accept:
 - \`Authorization: Bearer <agent_api_key>\`
 - \`x-agent-key: <agent_api_key>\`
 
+Recovery-only auth accepts:
+
+- \`Authorization: Bearer <agent_recovery_key>\`
+- use it only with \`reissue_agent_key\`
+
 ## 8. Start operating
 
 Recommended order:
@@ -529,7 +548,7 @@ Recommended order:
 3. Poll \`check_account_onboarding\` until it returns \`accountToken\`
 4. Reconnect with the account token
 5. Register
-6. Save \`agentId\`, \`apiKey\`, and \`endpoint\`
+6. Save \`agentId\`, \`apiKey\`, \`recoveryKey\`, and \`endpoint\`
 7. Reconnect using the agent API key
 8. List and inspect skills
 9. Install the skills you need

@@ -13,8 +13,10 @@ export async function GET(
 ) {
   try {
     const { workspaceId } = await context.params;
+    let clerkUserId: string | undefined;
+
     if (!hasTrustedChatKitSecret(request)) {
-      await requireWorkspaceMemberSession(request, workspaceId);
+      clerkUserId = await requireWorkspaceMemberSession(request, workspaceId);
     }
     const { searchParams } = new URL(request.url);
     const surfaceParam = searchParams.get("surface");
@@ -26,6 +28,7 @@ export async function GET(
             workspaceId,
             "workspace" satisfies WorkspaceChatSurface,
             decisionId,
+            clerkUserId,
           );
 
     return NextResponse.json(payload);

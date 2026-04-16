@@ -36,6 +36,7 @@ import {
   type WorkspaceSystemEventKind,
 } from "./workspace-chat-events";
 import type { WorkspaceCapturedSelection } from "./workspace-latex-surface";
+import { SupportErrorMessage } from "./support-error-message";
 
 type WorkspaceConversationMessage = {
   id: string;
@@ -908,14 +909,13 @@ export function WorkspaceChatKitPane({
   const sendErrorMessage = "Unable to send workspace message";
   const visibleSelection =
     selection && selection === optimisticallyDismissedSelection ? null : selection;
-  const emptyHint =
-    errorMessage ??
-    (isLoading
-      ? "Connecting the shared workspace thread…"
-      : `Try asking "${threadTitle === "Proposal collaboration" ? "What constraints are still open in the proposal?" : "What is Delta changing in the runtime loop section?"}"`);
+  const emptyHint = isLoading
+    ? "Connecting the shared workspace thread…"
+    : `Try asking "${threadTitle === "Proposal collaboration" ? "What constraints are still open in the proposal?" : "What is Delta changing in the runtime loop section?"}"`;
   const inputPlaceholder =
     "Ask anything about this workspace, reference a message, or highlight text...";
   const selectionAccent = getSelectionAccent(surfaceContext.collaborators, visibleSelection);
+  const viewerOwnedAgentIds = new Set(surfaceContext.viewerOwnedAgentIds);
   const visibleMessages = messages.flatMap((message): WorkspaceTimelineEntry[] => {
     const hasRenderableContent =
       message.content.trim().length > 0 ||
@@ -941,6 +941,8 @@ export function WorkspaceChatKitPane({
       },
     ];
   });
+  const showLoadingBlankState =
+    isLoading && visibleMessages.length === 0 && !errorMessage;
   const canSubmit =
     chatDraft.trim().length > 0 ||
     Boolean(visibleSelection) ||
@@ -1144,12 +1146,12 @@ export function WorkspaceChatKitPane({
       <div
         className={[
           "workspace-chat-shell",
-          visibleMessages.length === 0 ? "is-empty" : "",
+          visibleMessages.length === 0 && !showLoadingBlankState ? "is-empty" : "",
         ]
           .join(" ")
           .trim()}
       >
-        {surfaceContext.mode === "decision" && onNavigateBack ? (
+        {!showLoadingBlankState && surfaceContext.mode === "decision" && onNavigateBack ? (
           <div className="workspace-chat-shell-nav">
             <button
               className="workspace-chat-shell-backlink"
@@ -1161,7 +1163,7 @@ export function WorkspaceChatKitPane({
             </button>
           </div>
         ) : null}
-        {visibleMessages.length === 0 ? (
+        {showLoadingBlankState ? null : visibleMessages.length === 0 ? (
           <div className="workspace-chat-empty-state">
             <div className="workspace-chat-empty-mark" aria-hidden="true">
               <Sparkles absoluteStrokeWidth strokeWidth={2.05} />
@@ -1172,9 +1174,7 @@ export function WorkspaceChatKitPane({
                 <Highlighter absoluteStrokeWidth strokeWidth={2.05} />
               </span>
               <h3>Highlight &amp; Ask</h3>
-              <p>
-                Select any part of the LaTeX document to ask specific questions
-              </p>
+              <p>Select any part of the research to ask specific questions</p>
             </div>
 
             <div className="workspace-tool-card">
@@ -1193,20 +1193,30 @@ export function WorkspaceChatKitPane({
               </span>
               <h3>Additional</h3>
               <ul className="workspace-tool-list">
-                <li>Trace linked citations</li>
-                <li>Inspect the current drafting lane</li>
-                <li>Compare proposal and draft wording</li>
-                <li>Review the active section handoff</li>
+                <li>Multi-Agent research collaboration</li>
+                <li>Use chatbox to collaborate with agents</li>
+                <li>Research is backed by real evidence</li>
+                <li>Every action is recorded</li>
               </ul>
             </div>
 
-            <p className="workspace-chat-empty-hint">{emptyHint}</p>
+            {errorMessage ? (
+              <SupportErrorMessage className="workspace-chat-empty-hint" />
+            ) : (
+              <p className="workspace-chat-empty-hint">{emptyHint}</p>
+            )}
           </div>
         ) : (
           <div className="workspace-chat-log">
             {visibleMessages.map((entry, index) => {
               const { message, systemEvent } = entry;
-              const isSelfMessage = message.role === "user";
+              const messageAuthorId = message.authorId ?? null;
+              const isViewerOwnedAgentMessage =
+                message.role === "agent" &&
+                messageAuthorId !== null &&
+                viewerOwnedAgentIds.has(messageAuthorId);
+              const isUserMessage = message.role === "user";
+              const isSelfMessage = isUserMessage || isViewerOwnedAgentMessage;
               const isCollaboratorMessage = message.role === "agent" && !isSelfMessage;
               const isSharedContextMessage = message.role === "assistant" && !systemEvent;
               const displaySelectionBase = message.selection;
@@ -1313,6 +1323,8 @@ export function WorkspaceChatKitPane({
                   className={[
                     "workspace-chat-message",
                     isSelfMessage ? "is-self" : "",
+                    isUserMessage ? "is-user" : "",
+                    isViewerOwnedAgentMessage ? "is-owned-agent" : "",
                     isCollaboratorMessage ? "is-other" : "",
                     isSharedContextMessage ? "is-context" : "",
                   ]
@@ -1326,8 +1338,16 @@ export function WorkspaceChatKitPane({
                   }
                 >
                   <div className="workspace-chat-message-top">
-                    <div className="workspace-chat-role">
-                      {messageAuthorName}
+                    <div className="workspace-chat-message-meta">
+                      <div className="workspace-chat-role">
+                        {messageAuthorName}
+                      </div>
+                      <time
+                        className="workspace-chat-message-time"
+                        dateTime={message.createdAt}
+                      >
+                        {formatSystemEventTimestamp(message.createdAt)}
+                      </time>
                     </div>
 
                     {referenceCandidate ? (
@@ -1521,7 +1541,9 @@ export function WorkspaceChatKitPane({
               }}
             />
 
-            {errorMessage ? <p className="workspace-chat-composer-status">{errorMessage}</p> : null}
+            {errorMessage ? (
+              <SupportErrorMessage className="workspace-chat-composer-status" />
+            ) : null}
 
             <div className="workspace-chat-input-footer">
               <div className="workspace-chat-input-actions">

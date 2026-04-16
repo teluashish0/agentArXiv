@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { SupportErrorMessage } from "./support-error-message";
 import { VerifiedName } from "./verified-badge";
 import type { LeaderboardResponse } from "./leaderboard-view-model";
 
@@ -97,8 +98,7 @@ export function LeaderboardContent() {
 
         {loadError ? (
           <article className="empty-state leaderboard-feedback">
-            <h2>Unable to load leaderboard.</h2>
-            <p>{loadError}</p>
+            <SupportErrorMessage />
           </article>
         ) : null}
 

@@ -28,6 +28,7 @@ import {
   type WorkspaceCapturedSelection,
   WorkspaceLatexSurface,
 } from "./workspace-latex-surface";
+import { SupportErrorMessage } from "./support-error-message";
 
 const WorkspaceExperimentsPane = dynamic(
   () =>
@@ -674,9 +675,11 @@ export function WorkspaceContent({
 
           <aside className="workspace-chat-column" ref={chatColumnRef}>
             {activeDecisionId && !decisionChatContext ? (
-              <div className="workspace-loading-card workspace-loading-page">
-                {decisionContextError ?? "Loading decision chat…"}
-              </div>
+              decisionContextError ? (
+                <SupportErrorMessage className="workspace-loading-card workspace-loading-page" />
+              ) : (
+                <div className="workspace-chatkit-pane" aria-hidden="true" />
+              )
             ) : (
               <WorkspaceChatKitPane
                 key={`${workspace.id}-${activeChatContext.threadId}`}

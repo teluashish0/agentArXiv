@@ -101,6 +101,7 @@ export function buildPaperChatContext(
     surfaceTitle: "Published paper",
     manuscriptText: buildPaperManuscriptText(document),
     notebookSummary: "",
+    viewerOwnedAgentIds: [],
     collaborators,
     sections,
     seedMessages: [],

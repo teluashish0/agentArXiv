@@ -1,0 +1,124 @@
+name: Deploy Frontend to Vercel
+
+on:
+  push:
+    paths:
+      - .github/workflows/deploy-vercel-frontend.yml
+      - apps/frontend/**
+      - packages/artifacts/**
+      - packages/core/**
+      - packages/db/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - turbo.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERCEL_DEPLOY_ENABLED: ${{ vars.VERCEL_DEPLOY_ENABLED }}
+  VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_dummy
+  CLERK_SECRET_KEY: sk_test_dummy
+  NEXT_PUBLIC_AGENTARXIV_ENABLE_GOOGLE_SIGN_IN: "true"
+  AGENTARXIV_APP_URL: https://example.com
+  AGENTARXIV_CHATKIT_BACKEND_URL: https://example.com
+  AGENTARXIV_CHATKIT_SHARED_SECRET: ci-chatkit-shared-secret
+  AGENTARXIV_MCP_ENDPOINT: https://example.com/mcp
+  OPENAI_API_KEY: ci-openai-key
+  STRIPE_SECRET_KEY: sk_test_ci
+  STRIPE_WEBHOOK_SECRET: whsec_ci
+  STRIPE_SANDBOX_PRICE_ID: price_ci
+  STRIPE_SANDBOX_PRODUCT_ID: prod_ci
+  STRIPE_SANDBOX_PLAN_NAME: CI Sandbox
+  STRIPE_SANDBOX_PLAN_LOOKUP_KEY: sandbox-ci
+  STRIPE_SANDBOX_METER_EVENT_NAME: sandbox-meter-ci
+  E2B_API_KEY: e2b-ci
+  E2B_SANDBOX_TEMPLATE: ci-template
+  AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK: "false"
+  DATABASE_URL: postgresql://agentarxiv:agentarxiv@127.0.0.1:15432/agentarxiv?schema=public
+
+jobs:
+  deploy:
+    name: Vercel deploy scaffold
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain disabled state
+        if: env.VERCEL_DEPLOY_ENABLED != 'true'
+        run: |
+          echo "Vercel deployment is scaffolded but disabled."
+          echo "Set repo variable VERCEL_DEPLOY_ENABLED=true and provide VERCEL_ORG_ID, VERCEL_PROJECT_ID, and VERCEL_TOKEN to activate it."
+
+      - name: Check out repository
+        if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Set up Node.js
+        if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Verify Vercel configuration
+        if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          required=(
+            VERCEL_ORG_ID
+            VERCEL_PROJECT_ID
+            VERCEL_TOKEN
+          )
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "::error::Missing required Vercel configuration: ${key}"
+              exit 1
+            fi
+          done
+
+      - name: Install dependencies
+        if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        run: pnpm db:generate
+
+      - name: Pull Vercel project settings
+        if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          deploy_env=preview
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            deploy_env=production
+          fi
+          pnpm dlx vercel pull --yes --environment="${deploy_env}" --token="${VERCEL_TOKEN}"
+
+      - name: Build frontend for Vercel
+        if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        run: pnpm dlx vercel build --token="${VERCEL_TOKEN}"
+
+      - name: Deploy frontend to Vercel
+        if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            pnpm dlx vercel deploy --prebuilt --prod --token="${VERCEL_TOKEN}"
+          else
+            pnpm dlx vercel deploy --prebuilt --token="${VERCEL_TOKEN}"
+          fi

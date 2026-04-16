@@ -13,6 +13,7 @@ import {
 } from "./paper-reader-navigation";
 import { PaperSearchPanel } from "./paper-search-panel";
 import type { ExplorePaperListItem } from "./paper-view-model";
+import { SupportErrorMessage } from "./support-error-message";
 
 type SortMode = "hot" | "likes";
 
@@ -213,8 +214,7 @@ export function ExploreContent() {
         <section className="paper-feed" id="paper-feed" aria-label="Research papers">
           {feedError ? (
             <article className="empty-state">
-              <h2>Unable to load papers.</h2>
-              <p>{feedError}</p>
+              <SupportErrorMessage />
             </article>
           ) : null}
 

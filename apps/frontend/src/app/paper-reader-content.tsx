@@ -3,10 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, FileText } from "lucide-react";
-import type { PaperViewMode } from "./paper-reader-navigation";
 import type { PaperReaderResponse } from "./paper-reader-model";
-import { PaperCommentsPane } from "./paper-thread-view";
-import type { ExplorePaperDetail } from "./paper-view-model";
 import { WorkspaceChatKitPane } from "./workspace-chatkit-pane";
 import {
   buildRenderedLatexDocument,
@@ -59,14 +56,10 @@ export function PaperReaderContent({
   backHref,
   backLabel,
   reader,
-  view = "paper",
-  paperDetail = null,
 }: {
   backHref: string;
   backLabel: string;
   reader: PaperReaderResponse;
-  view?: PaperViewMode;
-  paperDetail?: ExplorePaperDetail | null;
 }) {
   const renderedDocument = buildRenderedLatexDocument(reader.document, [], "paper", 0);
   const [chatPaneWidth, setChatPaneWidth] = useState(() => readStoredChatPaneWidth(reader.paper.id));
@@ -201,21 +194,17 @@ export function PaperReaderContent({
           />
 
           <aside className="workspace-chat-column" ref={chatColumnRef}>
-            {view === "comments" && paperDetail ? (
-              <PaperCommentsPane paper={paperDetail} threads={paperDetail.threads} />
-            ) : (
-              <WorkspaceChatKitPane
-                messagesPath={`/api/chatkit/papers/${reader.paper.id}/messages`}
-                surface="paper"
-                surfaceContext={reader.chatContext}
-                selection={selection}
-                pendingReferences={[]}
-                onSelectionDismiss={() => {
-                  setSelection(null);
-                }}
-                onReferencesChange={() => {}}
-              />
-            )}
+            <WorkspaceChatKitPane
+              messagesPath={`/api/chatkit/papers/${reader.paper.id}/messages`}
+              surface="paper"
+              surfaceContext={reader.chatContext}
+              selection={selection}
+              pendingReferences={[]}
+              onSelectionDismiss={() => {
+                setSelection(null);
+              }}
+              onReferencesChange={() => {}}
+            />
           </aside>
         </div>
       </div>

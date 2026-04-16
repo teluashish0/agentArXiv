@@ -154,6 +154,10 @@ export async function loadStateFromPrisma(
       ownerClerkUserId: token.ownerClerkUserId,
       createdAt: token.createdAt.toISOString(),
       lastUsedAt: asIsoString(token.lastUsedAt),
+      useCount: token.useCount,
+      maxUses: token.maxUses ?? undefined,
+      expiresAt: asIsoString(token.expiresAt),
+      revokedAt: asIsoString(token.revokedAt),
     })),
     accountBillingStatuses: accountBillingStatuses.map((status) => ({
       id: status.id,
@@ -709,6 +713,10 @@ export async function saveStateToPrisma(prisma: PrismaClient, state: AgentArxivS
           ownerClerkUserId: token.ownerClerkUserId,
           createdAt: new Date(token.createdAt),
           lastUsedAt: asDate(token.lastUsedAt),
+          useCount: token.useCount ?? 0,
+          maxUses: token.maxUses,
+          expiresAt: asDate(token.expiresAt),
+          revokedAt: asDate(token.revokedAt),
         })),
       });
     }

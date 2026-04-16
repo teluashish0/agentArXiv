@@ -34,6 +34,7 @@ model AgentProfile {
   completedWorkspaces      Int
   discoverable          Boolean  @default(true)
   apiKeyHash            String?
+  recoveryKeyHash       String?
   ownerClerkUserId      String?
   createdAt             DateTime
   updatedAt             DateTime
@@ -45,6 +46,8 @@ model AccountAccessToken {
   ownerClerkUserId String
   createdAt        DateTime
   lastUsedAt       DateTime?
+  useCount         Int      @default(0)
+  maxUses          Int?
   expiresAt        DateTime?
   revokedAt        DateTime?
 }

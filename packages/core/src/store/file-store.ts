@@ -103,6 +103,7 @@ import type {
   SkillExecution,
   GovernanceDecision,
   GovernanceDecisionKind,
+  GovernanceDecisionVoteChoice,
   GovernanceVote,
   WorkspaceBrief,
   WorkspaceAccountMembership,
@@ -385,7 +386,8 @@ const SANDBOX_MAX_AGE_MINUTES = 120;
 const SANDBOX_MAX_ACTIVE_EXECUTIONS_PER_WORKSPACE = 3;
 const SANDBOX_MAX_CHAIN_DEPTH = 6;
 const SANDBOX_MAX_RUNTIME_MINUTES_PER_PROFILE_PER_WORKSPACE_PER_DAY = 120;
-const ACCOUNT_TOKEN_TTL_DAYS = 90;
+const DEFAULT_ACCOUNT_TOKEN_TTL_DAYS = 30;
+const ONBOARDING_ACCOUNT_TOKEN_TTL_HOURS = 1;
 const GOVERNANCE_SUPERMAJORITY_FRACTION = 2 / 3;
 const sandboxBlockingStatuses = new Set<SandboxExecution["status"]>([
   "queued",
@@ -393,8 +395,17 @@ const sandboxBlockingStatuses = new Set<SandboxExecution["status"]>([
   "running",
 ]);
 
+type CreateAccountAccessTokenOptions = {
+  expiresAt?: Date;
+  maxUses?: number;
+};
+
 function addDays(value: Date, days: number) {
   return new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function addHours(value: Date, hours: number) {
+  return new Date(value.getTime() + hours * 60 * 60 * 1000);
 }
 
 function getDefaultSectionTemplates(
@@ -1753,11 +1764,33 @@ export class FileStoreRepository {
     return { plain, hash };
   }
 
+  private createRecoveryKey() {
+    const plain = `agentarxiv_recovery_${nanoid(32)}`;
+    const hash = this.hashSecret(plain);
+
+    return { plain, hash };
+  }
+
   private createAccountAccessTokenValue() {
     const plain = `agentarxiv_account_${nanoid(32)}`;
     const hash = this.hashSecret(plain);
 
     return { plain, hash };
+  }
+
+  private formatCreatedAccountAccessToken(input: {
+    token: string;
+    createdAt: Date;
+    expiresAt?: Date;
+    maxUses?: number;
+  }) {
+    return {
+      token: input.token,
+      endpoint: this.getRegistrationEndpoint(),
+      createdAt: input.createdAt.toISOString(),
+      expiresAt: input.expiresAt?.toISOString(),
+      maxUses: input.maxUses,
+    };
   }
 
   private createAccountOnboardingTokenValue() {
@@ -1836,6 +1869,14 @@ export class FileStoreRepository {
       throw new Error("Invalid account token");
     }
 
+    if (
+      accessToken.maxUses !== undefined &&
+      accessToken.maxUses !== null &&
+      (accessToken.useCount ?? 0) >= accessToken.maxUses
+    ) {
+      throw new Error("Invalid account token");
+    }
+
     return accessToken;
   }
 
@@ -1844,6 +1885,22 @@ export class FileStoreRepository {
 
     if (!agent) {
       throw new Error(`Agent ${agentId} not found`);
+    }
+
+    return agent;
+  }
+
+  private assertAccountOwnsAgent(
+    state: AgentArxivState,
+    ownerClerkUserId: string,
+    agentId: string,
+  ) {
+    const agent = this.findAgent(state, agentId);
+
+    if (agent.ownerClerkUserId !== ownerClerkUserId) {
+      throw new Error(
+        `Agent ${agentId} does not belong to the authenticated account`,
+      );
     }
 
     return agent;
@@ -2089,13 +2146,25 @@ export class FileStoreRepository {
     }
   }
 
+  private maybeFindWorkspaceDocument(
+    state: AgentArxivState,
+    workspaceId: string,
+    surface: WorkspaceDocument["surface"],
+  ) {
+    return state.workspaceDocuments.find(
+      (item) => item.workspaceId === workspaceId && item.surface === surface,
+    );
+  }
+
   private findWorkspaceDocument(
     state: AgentArxivState,
     workspaceId: string,
     surface: WorkspaceDocument["surface"],
   ) {
-    const document = state.workspaceDocuments.find(
-      (item) => item.workspaceId === workspaceId && item.surface === surface,
+    const document = this.maybeFindWorkspaceDocument(
+      state,
+      workspaceId,
+      surface,
     );
 
     if (!document) {
@@ -2295,6 +2364,33 @@ export class FileStoreRepository {
     }
 
     return changed;
+  }
+
+  private ensureWorkspaceProposalDocumentInState(
+    state: AgentArxivState,
+    workspace: WorkspaceBrief,
+    now: string,
+  ) {
+    if (this.maybeFindWorkspaceDocument(state, workspace.id, "proposal")) {
+      return false;
+    }
+
+    const primaryPaperTitle =
+      this.maybeFindWorkspaceDocument(state, workspace.id, "draft")?.paperTitle ??
+      workspace.title;
+    const proposalDocument = this.buildWorkspaceDocument({
+      state,
+      workspaceId: workspace.id,
+      surface: "proposal",
+      title: "Proposal",
+      paperTitle: primaryPaperTitle,
+      templateId: workspace.templateName,
+      memberAgentIds: workspace.memberAgentIds,
+      now,
+    });
+
+    state.workspaceDocuments.push(proposalDocument);
+    return true;
   }
 
   private buildWorkspaceDocument(input: {
@@ -2900,11 +2996,15 @@ export class FileStoreRepository {
     state: AgentArxivState,
     workspaceId: string,
   ) {
-    const proposalDocument = this.findWorkspaceDocument(
+    const proposalDocument = this.maybeFindWorkspaceDocument(
       state,
       workspaceId,
       "proposal",
     );
+
+    if (!proposalDocument) {
+      return false;
+    }
 
     return (
       proposalDocument.sections.length > 0 &&
@@ -3633,28 +3733,47 @@ export class FileStoreRepository {
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
-  async createAccountAccessToken(ownerClerkUserId: string) {
+  async createAccountAccessToken(
+    ownerClerkUserId: string,
+    options?: CreateAccountAccessTokenOptions,
+  ) {
     const state = await this.loadState();
     const createdAt = new Date();
-    const expiresAt = addDays(createdAt, ACCOUNT_TOKEN_TTL_DAYS);
+    const expiresAt =
+      options?.expiresAt ?? addDays(createdAt, DEFAULT_ACCOUNT_TOKEN_TTL_DAYS);
+    const maxUses = options?.maxUses;
+
+    if (expiresAt.getTime() <= createdAt.getTime()) {
+      throw new Error("Account token expiry must be in the future");
+    }
+
+    if (
+      maxUses !== undefined &&
+      (!Number.isInteger(maxUses) || maxUses <= 0)
+    ) {
+      throw new Error("Account token usage limit must be a positive integer");
+    }
+
     const token = this.createAccountAccessTokenValue();
     const accessToken: AccountAccessToken = {
       id: `acctok_${nanoid(10)}`,
       tokenHash: token.hash,
       ownerClerkUserId,
       createdAt: createdAt.toISOString(),
+      useCount: 0,
+      maxUses,
       expiresAt: expiresAt.toISOString(),
     };
 
     state.accountAccessTokens.push(accessToken);
     await this.saveState(state);
 
-    return {
+    return this.formatCreatedAccountAccessToken({
       token: token.plain,
-      endpoint: this.getRegistrationEndpoint(),
-      createdAt: createdAt.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    };
+      createdAt,
+      expiresAt,
+      maxUses,
+    });
   }
 
   async createAccountOnboardingSession() {
@@ -3785,8 +3904,13 @@ export class FileStoreRepository {
       );
     }
 
+    const now = new Date();
     const accountToken = await this.createAccountAccessToken(
       resolvedSession.ownerClerkUserId,
+      {
+        expiresAt: addHours(now, ONBOARDING_ACCOUNT_TOKEN_TTL_HOURS),
+        maxUses: 1,
+      },
     );
     const completedSession: AccountOnboardingSessionRecord = {
       ...resolvedSession,
@@ -4242,6 +4366,33 @@ export class FileStoreRepository {
 
     await this.saveState(state);
     return this.getGovernanceDecisionById(parsed.decisionId);
+  }
+
+  async castGovernanceVoteAsAgent(input: {
+    decisionId: string;
+    agentId: string;
+    vote: GovernanceDecisionVoteChoice;
+    rationale?: string;
+  }) {
+    const decisionId = input.decisionId.trim();
+    const agentId = input.agentId.trim();
+    const vote = input.vote;
+    const rationale = input.rationale?.trim();
+    const state = await this.loadState();
+    const agent = this.findAgent(state, agentId);
+
+    if (!agent.ownerClerkUserId) {
+      throw new Error(
+        `Agent ${agentId} is not linked to an authenticated account and cannot cast governance votes.`,
+      );
+    }
+
+    return this.castGovernanceVote({
+      decisionId,
+      voterAccountClerkUserId: agent.ownerClerkUserId,
+      vote,
+      rationale,
+    });
   }
 
   private buildWorkspaceRecord(
@@ -5146,11 +5297,24 @@ export class FileStoreRepository {
     return agent;
   }
 
+  async resolveAgentByRecoveryKey(recoveryKey: string) {
+    const state = await this.loadState();
+    const hash = this.hashSecret(recoveryKey);
+    const agent = state.agents.find((item) => item.recoveryKeyHash === hash);
+
+    if (!agent) {
+      throw new Error("Invalid recovery key");
+    }
+
+    return agent;
+  }
+
   async authenticateAccountToken(token: string) {
     const state = await this.loadState();
     const accessToken = this.findAccountAccessToken(state, token);
 
     accessToken.lastUsedAt = new Date().toISOString();
+    accessToken.useCount = (accessToken.useCount ?? 0) + 1;
     await this.saveState(state);
 
     return accessToken.ownerClerkUserId;
@@ -5161,6 +5325,16 @@ export class FileStoreRepository {
 
     if (agent.id !== agentId) {
       throw new Error(`API key belongs to ${agent.id}, not ${agentId}`);
+    }
+
+    return agent;
+  }
+
+  async authenticateAgentRecovery(agentId: string, recoveryKey: string) {
+    const agent = await this.resolveAgentByRecoveryKey(recoveryKey);
+
+    if (agent.id !== agentId) {
+      throw new Error(`Recovery key belongs to ${agent.id}, not ${agentId}`);
     }
 
     return agent;
@@ -5272,9 +5446,18 @@ export class FileStoreRepository {
     const state = await this.loadState();
     const workspace = this.findWorkspace(state, workspaceId);
     const now = new Date().toISOString();
+    const proposalDocumentChanged = this.ensureWorkspaceProposalDocumentInState(
+      state,
+      workspace,
+      now,
+    );
     const notebookState = this.ensureWorkspaceNotebookState(state, workspaceId);
 
-    if (this.syncWorkspaceDocumentAuthorsInState(state, workspace, now) || notebookState.changed) {
+    if (
+      proposalDocumentChanged ||
+      this.syncWorkspaceDocumentAuthorsInState(state, workspace, now) ||
+      notebookState.changed
+    ) {
       await this.saveState(state);
     }
 
@@ -6258,6 +6441,7 @@ export class FileStoreRepository {
     });
     const state = await this.loadState();
     const apiKey = this.createApiKey();
+    const recoveryKey = this.createRecoveryKey();
     const now = new Date().toISOString();
 
     if (!options?.ownerClerkUserId) {
@@ -6298,6 +6482,7 @@ export class FileStoreRepository {
       },
       discoverable: true,
       apiKeyHash: apiKey.hash,
+      recoveryKeyHash: recoveryKey.hash,
       ownerClerkUserId: options.ownerClerkUserId,
       createdAt: now,
       updatedAt: now,
@@ -6311,6 +6496,7 @@ export class FileStoreRepository {
     return {
       agent,
       apiKey: apiKey.plain,
+      recoveryKey: recoveryKey.plain,
       endpoint: this.getRegistrationEndpoint(),
     };
   }
@@ -6344,6 +6530,40 @@ export class FileStoreRepository {
     await this.saveState(state);
 
     return { agentId, apiKey: apiKey.plain };
+  }
+
+  async reissueAgentKey(agentId: string, ownerClerkUserId: string) {
+    const state = await this.loadState();
+    const agent = this.assertAccountOwnsAgent(
+      state,
+      ownerClerkUserId,
+      agentId,
+    );
+    const apiKey = this.createApiKey();
+    const recoveryKey = this.createRecoveryKey();
+
+    agent.apiKeyHash = apiKey.hash;
+    agent.recoveryKeyHash = recoveryKey.hash;
+    agent.updatedAt = new Date().toISOString();
+
+    await this.saveState(state);
+
+    return { agentId, apiKey: apiKey.plain, recoveryKey: recoveryKey.plain };
+  }
+
+  async reissueAgentKeyFromRecovery(agentId: string) {
+    const state = await this.loadState();
+    const agent = this.findAgent(state, agentId);
+    const apiKey = this.createApiKey();
+    const recoveryKey = this.createRecoveryKey();
+
+    agent.apiKeyHash = apiKey.hash;
+    agent.recoveryKeyHash = recoveryKey.hash;
+    agent.updatedAt = new Date().toISOString();
+
+    await this.saveState(state);
+
+    return { agentId, apiKey: apiKey.plain, recoveryKey: recoveryKey.plain };
   }
 
   async listWorkspaceMatches(agentId: string) {

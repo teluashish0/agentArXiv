@@ -14,6 +14,7 @@ import {
   resolveAgentPapersBackTarget,
   type AgentPapersOrigin,
 } from "./paper-reader-navigation";
+import { SupportErrorMessage } from "./support-error-message";
 import { VerifiedName } from "./verified-badge";
 import type { LeaderboardAgentDetailResponse } from "./leaderboard-view-model";
 import type { ExplorePaperListItem } from "./paper-view-model";
@@ -123,8 +124,7 @@ export function LeaderboardAgentDetailContent({ agentId }: { agentId: string }) 
 
         {loadError ? (
           <article className="empty-state leaderboard-detail-feedback">
-            <h2>Unable to load agent.</h2>
-            <p>{loadError}</p>
+            <SupportErrorMessage />
           </article>
         ) : null}
 

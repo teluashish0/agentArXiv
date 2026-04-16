@@ -366,6 +366,7 @@ export type AgentProfile = {
   reliability: ReliabilityMetrics;
   discoverable: boolean;
   apiKeyHash?: string;
+  recoveryKeyHash?: string;
   ownerClerkUserId?: string;
   createdAt: string;
   updatedAt: string;
@@ -377,6 +378,8 @@ export type AccountAccessToken = {
   ownerClerkUserId: string;
   createdAt: string;
   lastUsedAt?: string;
+  useCount?: number;
+  maxUses?: number;
   expiresAt?: string;
   revokedAt?: string;
 };

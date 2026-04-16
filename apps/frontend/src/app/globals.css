@@ -296,6 +296,16 @@ body {
   min-height: 0;
 }
 
+.content-panel.is-paper-thread {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px clamp(28px, 4vw, 56px) 24px;
+}
+
+.content-panel.is-paper-thread .content-panel-body {
+  min-width: 0;
+}
+
 button {
   font: inherit;
 }
@@ -2240,9 +2250,8 @@ button {
   display: flex;
   flex-direction: column;
   gap: calc(28px * var(--paper-thread-content-scale));
-  width: calc(100% + clamp(48px, 8vw, 180px));
-  margin-right: calc(clamp(48px, 8vw, 180px) / -2);
-  margin-left: calc(clamp(48px, 8vw, 180px) / -2);
+  width: 100%;
+  margin: 0;
   padding: calc(24px * var(--paper-thread-content-scale)) 0
     calc(36px * var(--paper-thread-content-scale));
   animation: paper-thread-enter 220ms ease;
@@ -3789,6 +3798,390 @@ button {
   line-height: 1.72;
 }
 
+.agents-token-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(14px);
+}
+
+.agents-token-dialog {
+  width: min(100%, 760px);
+  max-height: min(100vh - 64px, 760px);
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top right, rgba(250, 115, 21, 0.12), transparent 34%),
+    #111113;
+  box-shadow: 0 32px 96px rgba(0, 0, 0, 0.45);
+}
+
+.agents-token-dialog-header,
+.agents-token-dialog-body,
+.agents-token-dialog-footer {
+  padding-left: 28px;
+  padding-right: 28px;
+}
+
+.agents-token-dialog-header {
+  display: grid;
+  gap: 12px;
+  padding-top: 28px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.agents-token-dialog-header h3 {
+  margin: 0;
+  color: var(--surface-text);
+  font-size: clamp(1.9rem, 3vw, 2.4rem);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+}
+
+.agents-token-dialog-header p {
+  margin: 0;
+  color: var(--surface-text-soft);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.agents-token-dialog-body {
+  display: grid;
+  gap: 18px;
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+
+.agents-token-dialog-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.agents-token-dialog-grid-secondary {
+  align-items: start;
+}
+
+.agents-token-field {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agents-token-label {
+  color: #8e8791;
+  font-family:
+    ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agents-token-trigger,
+.agents-token-input,
+.agents-token-preview {
+  min-height: 54px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: #09090a;
+  color: var(--surface-text);
+  font-family:
+    ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.96rem;
+  line-height: 1.4;
+}
+
+.agents-token-trigger,
+.agents-token-input {
+  width: 100%;
+}
+
+.agents-token-popover-field {
+  position: relative;
+}
+
+.agents-token-popover-shell {
+  position: relative;
+}
+
+.agents-token-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agents-token-trigger-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-token-trigger-icon {
+  width: 18px;
+  height: 18px;
+  color: #efe8e0;
+  flex: none;
+  transition: transform 160ms ease, color 160ms ease;
+}
+
+.agents-token-trigger-icon.is-open {
+  transform: rotate(180deg);
+}
+
+.agents-token-trigger-calendar .agents-token-trigger-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.agents-token-trigger:focus-visible,
+.agents-token-input:focus-visible {
+  outline: none;
+  border-color: rgba(250, 115, 21, 0.82);
+  box-shadow:
+    0 0 0 1px rgba(250, 115, 21, 0.78),
+    0 0 0 6px rgba(250, 115, 21, 0.12);
+}
+
+.agents-token-menu,
+.agents-token-calendar {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  z-index: 8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(32, 31, 35, 0.96), rgba(19, 19, 21, 0.98));
+  box-shadow:
+    0 28px 72px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.agents-token-menu {
+  padding: 10px;
+}
+
+.agents-token-menu-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: #e9e1d8;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.agents-token-menu-option:hover,
+.agents-token-menu-option:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+
+.agents-token-menu-option.is-selected {
+  background: linear-gradient(180deg, rgba(250, 115, 21, 0.22), rgba(250, 115, 21, 0.12));
+  color: #fff4eb;
+}
+
+.agents-token-menu-check {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: #ffb47b;
+}
+
+.agents-token-calendar {
+  min-width: 308px;
+  padding: 18px 18px 16px;
+}
+
+.agents-token-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.agents-token-calendar-header strong {
+  color: var(--surface-text);
+  font-size: 1.04rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.agents-token-calendar-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agents-token-calendar-nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #efe8e0;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.agents-token-calendar-nav-button:hover,
+.agents-token-calendar-nav-button:focus-visible {
+  border-color: rgba(250, 115, 21, 0.34);
+  background: rgba(250, 115, 21, 0.12);
+  outline: none;
+}
+
+.agents-token-calendar-weekdays,
+.agents-token-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.agents-token-calendar-weekdays {
+  margin-top: 16px;
+  margin-bottom: 10px;
+}
+
+.agents-token-calendar-weekday {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e8791;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agents-token-calendar-grid {
+  gap: 6px;
+}
+
+.agents-token-calendar-day {
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #efe8e0;
+  font: inherit;
+  font-size: 0.96rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease,
+    opacity 150ms ease;
+}
+
+.agents-token-calendar-day:hover,
+.agents-token-calendar-day:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.agents-token-calendar-day.is-outside-month {
+  color: #6e6870;
+}
+
+.agents-token-calendar-day.is-today {
+  box-shadow: inset 0 0 0 1px rgba(250, 115, 21, 0.42);
+}
+
+.agents-token-calendar-day.is-selected {
+  background: linear-gradient(180deg, #fa7315, #c75104);
+  color: #120b07;
+}
+
+.agents-token-calendar-day:disabled {
+  color: #5a545d;
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.agents-token-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.agents-token-input[type="number"]::-webkit-outer-spin-button,
+.agents-token-input[type="number"]::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.agents-token-input-compact {
+  max-width: 180px;
+}
+
+.agents-token-preview {
+  display: flex;
+  align-items: center;
+}
+
+.agents-token-preview-multiline {
+  min-height: 88px;
+  align-items: flex-start;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  line-height: 1.65;
+}
+
+.agents-token-note {
+  margin: 0;
+  color: var(--surface-text-soft);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.agents-token-note-error {
+  color: #ff8e6d;
+}
+
+.agents-token-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 22px;
+  padding-bottom: 28px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .agents-claim-block {
   display: grid;
   gap: 16px;
@@ -3835,6 +4228,43 @@ button {
   display: grid;
   gap: 30px;
   padding-top: 6px;
+}
+
+@media (max-width: 720px) {
+  .agents-token-dialog-backdrop {
+    padding: 16px;
+  }
+
+  .agents-token-dialog {
+    max-height: min(100vh - 32px, 760px);
+  }
+
+  .agents-token-dialog-header,
+  .agents-token-dialog-body,
+  .agents-token-dialog-footer {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .agents-token-dialog-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agents-token-input-compact {
+    max-width: none;
+  }
+
+  .agents-token-calendar {
+    min-width: 0;
+  }
+
+  .agents-token-dialog-footer {
+    justify-content: stretch;
+  }
+
+  .agents-token-dialog-footer .agents-action {
+    width: 100%;
+  }
 }
 
 .agents-list-section > .agents-list,
@@ -4847,8 +5277,8 @@ button {
   --workspace-paper-abstract-text-line-height: 1.38;
   --workspace-paper-keywords-size: 9pt;
   --workspace-paper-keywords-spacing: 0.1in;
-  --workspace-paper-body-padding: 0.12in 0.78in 0.62in;
-  --workspace-paper-continuation-body-padding: 0.72in 0.78in 0.62in;
+  --workspace-paper-body-padding: 0.12in 0.78in 0.12in;
+  --workspace-paper-continuation-body-padding: 0.72in 0.78in 0.72in;
   --workspace-paper-section-spacing: 0.18in;
   --workspace-paper-section-title-size: 12pt;
   --workspace-paper-section-title-line-height: 1.26;
@@ -4952,6 +5382,7 @@ button {
   );
   height: calc(11in * var(--workspace-paper-scale, 1));
   flex: none;
+  overflow: hidden;
 }
 
 .workspace-paper-page {
@@ -4959,7 +5390,7 @@ button {
   top: 0;
   left: 0;
   width: var(--workspace-paper-page-width);
-  min-height: 11in;
+  height: 11in;
   border: 1px solid #2a2f37;
   background: #181818;
   box-shadow:
@@ -4967,6 +5398,7 @@ button {
     0 24px 56px rgba(0, 0, 0, 0.42);
   transform: scale(var(--workspace-paper-scale, 1));
   transform-origin: top left;
+  overflow: hidden;
 }
 
 .workspace-paper-header {
@@ -5743,7 +6175,7 @@ button {
   min-width: 0;
   width: 100%;
   padding: 0;
-  background: #0b0c0f;
+  background: #000000;
 }
 
 .workspace-experiments-theme {
@@ -5756,6 +6188,9 @@ button {
 }
 
 .workspace-experiments-notebook-frame {
+  --jp-cell-prompt-width: 96px;
+  --jp-code-font-size: 15px;
+  --jp-code-line-height: 1.72;
   --workspace-experiments-content-fade-height: clamp(72px, 10vh, 112px);
   --workspace-experiments-top-fade-height: clamp(132px, 17vh, 188px);
   position: relative;
@@ -5766,8 +6201,8 @@ button {
   min-width: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 48%),
-    #0b0c0f;
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.04), transparent 48%),
+    #000000;
 }
 
 .workspace-experiments-title {
@@ -5824,15 +6259,21 @@ button {
   z-index: 3;
   width: 100%;
   height: var(--workspace-experiments-top-fade-height);
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 160ms ease;
   background: linear-gradient(
     180deg,
-    rgba(11, 12, 15, 0.14) 0%,
-    rgba(11, 12, 15, 0.1) 24%,
-    rgba(11, 12, 15, 0.06) 52%,
-    rgba(11, 12, 15, 0.03) 76%,
-    rgba(11, 12, 15, 0) 100%
+    rgba(0, 0, 0, 0.18) 0%,
+    rgba(0, 0, 0, 0.13) 24%,
+    rgba(0, 0, 0, 0.07) 52%,
+    rgba(0, 0, 0, 0.03) 76%,
+    rgba(0, 0, 0, 0) 100%
   );
+}
+
+.workspace-experiments-notebook-frame.is-scrolled .workspace-experiments-top-fade {
+  opacity: 1;
 }
 
 .workspace-experiments-loading-state,
@@ -5884,14 +6325,14 @@ button {
 
 .workspace-experiments-fallback {
   z-index: 2;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .workspace-experiments-fallback-inner {
-  width: min(100%, 1520px);
-  margin: 0 auto;
-  padding: clamp(152px, 19vh, 214px) clamp(28px, 3.4vw, 56px)
-    clamp(72px, 9vh, 120px);
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 .workspace-experiments-overview {
@@ -5953,7 +6394,212 @@ button {
 
 .workspace-experiments-cell-list {
   display: grid;
-  gap: 20px;
+  gap: 0;
+}
+
+.workspace-experiments-jupyter-cell {
+  display: grid;
+  gap: 0;
+  padding: var(--jp-cell-padding, 5px) 0;
+}
+
+.workspace-experiments-notebook-frame .jp-NotebookPanel,
+.workspace-experiments-notebook-frame .jp-Notebook,
+.workspace-experiments-notebook-frame .jp-WindowedPanel-outer {
+  height: 100%;
+  min-height: 100%;
+}
+
+.workspace-experiments-notebook-frame .jp-WindowedPanel-outer {
+  overflow: auto;
+}
+
+.workspace-experiments-notebook-frame .jp-WindowedPanel-viewport {
+  min-height: 100%;
+}
+
+.workspace-experiments-notebook-frame .jp-Cell-inputWrapper,
+.workspace-experiments-notebook-frame .jp-Cell-outputWrapper {
+  display: flex;
+  flex-direction: row;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
+}
+
+.workspace-experiments-notebook-frame .jp-Cell:not(.jp-mod-noOutputs) .jp-Cell-outputWrapper {
+  margin-top: 5px;
+}
+
+.workspace-experiments-notebook-frame .jp-Cell-inputArea,
+.workspace-experiments-notebook-frame .jp-Cell-outputArea {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.workspace-experiments-notebook-frame .jp-InputArea {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.workspace-experiments-notebook-frame .jp-InputArea-editor,
+.workspace-experiments-notebook-frame .jp-OutputArea-output {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.workspace-experiments-notebook-frame .jp-InputPrompt,
+.workspace-experiments-notebook-frame .jp-OutputPrompt {
+  flex: 0 0 var(--jp-cell-prompt-width, 64px);
+  width: var(--jp-cell-prompt-width, 64px);
+  padding: var(--jp-code-padding, 5px);
+  color: var(--jp-cell-inprompt-font-color, #307fc1);
+  font-family:
+    var(
+      --jp-cell-prompt-font-family,
+      ui-monospace,
+      "SFMono-Regular",
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace
+    );
+  font-size: var(--jp-code-font-size, 13px);
+  line-height: var(--jp-code-line-height, 1.54);
+  letter-spacing: var(--jp-cell-prompt-letter-spacing, 0);
+  opacity: var(--jp-cell-prompt-opacity, 1);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.workspace-experiments-notebook-frame .jp-OutputPrompt {
+  color: var(--jp-cell-outprompt-font-color, #bf5b3d);
+}
+
+.workspace-experiments-notebook-frame .jp-InputPrompt.is-empty,
+.workspace-experiments-notebook-frame .jp-OutputPrompt.is-empty {
+  visibility: hidden;
+}
+
+.workspace-experiments-jupyter-input-shell {
+  min-width: 0;
+  overflow: hidden;
+  border: var(--jp-border-width, 1px) solid
+    var(--jp-cell-editor-border-color, #616161);
+  border-radius: 0;
+  box-sizing: border-box;
+  background: #111113;
+  box-shadow: none;
+  outline: none;
+  cursor: pointer;
+}
+
+.workspace-experiments-jupyter-input-shell:hover {
+  border-color: rgba(122, 115, 109, 0.62);
+}
+
+.workspace-experiments-jupyter-input-shell:focus,
+.workspace-experiments-jupyter-input-shell:focus-visible {
+  outline: none;
+  border-color: rgba(154, 145, 137, 0.74);
+  box-shadow: inset 0 0 0 1px rgba(61, 57, 53, 0.72);
+  background: #111113;
+}
+
+.workspace-experiments-notebook-frame .jp-MarkdownCell .workspace-experiments-jupyter-input-shell {
+  background: rgba(245, 245, 245, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.workspace-experiments-notebook-frame .jp-RawCell .workspace-experiments-jupyter-input-shell {
+  background: rgba(61, 45, 34, 0.22);
+  border-color: rgba(200, 166, 124, 0.24);
+}
+
+.workspace-experiments-notebook-frame .jp-OutputArea {
+  overflow-y: auto;
+}
+
+.workspace-experiments-notebook-frame .jp-OutputArea-child {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.workspace-experiments-jupyter-editor-content,
+.workspace-experiments-jupyter-output-content {
+  margin: 0;
+  padding: var(--jp-code-padding, 5px);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #efe8de;
+  font-family:
+    var(
+      --jp-code-font-family,
+      ui-monospace,
+      "SFMono-Regular",
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace
+    );
+  font-size: var(--jp-code-font-size, 13px);
+  line-height: var(--jp-code-line-height, 1.54);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.workspace-experiments-jupyter-output-content {
+  padding: var(--jp-code-padding, 5px);
+}
+
+.workspace-experiments-jupyter-output-shell {
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-sizing: border-box;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.workspace-experiments-jupyter-output-shell[role="button"] {
+  cursor: pointer;
+}
+
+.workspace-experiments-jupyter-output-shell[role="button"]:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.workspace-experiments-jupyter-output-shell:focus,
+.workspace-experiments-jupyter-output-shell:focus-visible {
+  outline: 1px solid rgba(154, 145, 137, 0.74);
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.workspace-experiments-jupyter-output-shell.is-error {
+  background: rgba(244, 67, 54, 0.08);
 }
 
 .workspace-experiments-cell-card,
@@ -6057,6 +6703,19 @@ button {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.workspace-experiments-jupyter-output-shell .workspace-experiments-output-image {
+  max-width: 100%;
+  margin: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+}
+
+.workspace-experiments-jupyter-output-shell .workspace-experiments-output-empty {
+  margin: 0;
+  padding: 5px;
+}
+
 .workspace-experiments-empty-state {
   max-width: 720px;
 }
@@ -6074,7 +6733,9 @@ button {
   pointer-events: none;
 }
 
-.workspace-experiments-notebook-frame .jp-Notebook > .jp-WindowedPanel-outer {
+.workspace-experiments-notebook-frame.is-scrolled
+  .jp-Notebook
+  > .jp-WindowedPanel-outer {
   -webkit-mask-image: linear-gradient(
     180deg,
     transparent 0,
@@ -6108,7 +6769,7 @@ button {
 }
 
 .workspace-experiments-notebook-frame .jp-Notebook {
-  padding: clamp(152px, 19vh, 214px) clamp(28px, 3.4vw, 56px)
+  padding: clamp(196px, 24vh, 258px) clamp(28px, 3.4vw, 56px)
     clamp(72px, 9vh, 120px);
   background: transparent;
 }
@@ -6130,7 +6791,7 @@ button {
 }
 
 .workspace-experiments-notebook-frame .jp-Notebook .jp-OutputArea-child {
-  border-radius: 24px;
+  border-radius: 0;
 }
 
 .workspace-experiments-notebook-frame .jp-Notebook-footer {
@@ -6165,13 +6826,67 @@ button {
   padding-block: 18px 22px;
 }
 
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-comment {
+  color: #7a756f;
+  font-style: italic;
+}
+
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-keyword,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-operator {
+  color: #d89b57;
+}
+
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-atom,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-bool,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-number,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-literal {
+  color: #d47b6d;
+}
+
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-string,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-string2,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-url {
+  color: #8fbf88;
+}
+
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-variableName,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-propertyName,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-labelName {
+  color: #efe8de;
+}
+
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-definition,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-variableName2,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-propertyName.tok-definition {
+  color: #f5d79c;
+}
+
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-typeName,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-className,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-namespace {
+  color: #78a9cf;
+}
+
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-meta,
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-macroName {
+  color: #bea68a;
+}
+
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-punctuation {
+  color: #c8c0b6;
+}
+
+.workspace-experiments-notebook-frame .workspace-experiments-jupyter-code .tok-invalid {
+  color: #ff9382;
+}
+
 .workspace-jupyter-inline-meta,
 .workspace-jupyter-cell-meta {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 0 12px 14px;
+  padding: 0 0 12px;
   pointer-events: none;
 }
 
@@ -6213,8 +6928,7 @@ button {
     padding-left: var(--jp-code-padding, 5px);
   }
 
-  .workspace-experiments-loading-state,
-  .workspace-experiments-fallback-inner {
+  .workspace-experiments-loading-state {
     padding: 114px 14px 56px;
   }
 
@@ -6222,6 +6936,20 @@ button {
   .workspace-experiments-stats,
   .workspace-experiments-card-header {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-experiments-notebook-frame .jp-InputArea,
+  .workspace-experiments-notebook-frame .jp-OutputArea-child {
+    flex-direction: column;
+  }
+
+  .workspace-experiments-notebook-frame .jp-InputPrompt,
+  .workspace-experiments-notebook-frame .jp-OutputPrompt {
+    flex: 0 0 auto;
+    width: auto;
+    padding-top: 0;
+    padding-left: 0;
+    text-align: left;
   }
 
   .workspace-experiments-card-header {
@@ -6239,7 +6967,7 @@ button {
   }
 
   .workspace-experiments-notebook-frame .jp-Notebook {
-    padding: 114px 14px 56px;
+    padding: 150px 14px 56px;
   }
 
   .workspace-experiments-notebook-frame .jp-Notebook .jp-Cell {
@@ -6364,15 +7092,6 @@ button {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-}
-
-.paper-comments-pane {
-  --paper-thread-content-scale: 1;
-}
-
-.paper-comments-pane-log {
-  gap: 0;
-  padding: 18px 18px 24px;
 }
 
 .workspace-chatkit-thread-chip {
@@ -6683,10 +7402,19 @@ button {
 .workspace-chat-message.is-self {
   margin-right: 0;
   margin-left: auto;
+}
+
+.workspace-chat-message.is-user {
   border-color: rgba(250, 115, 21, 0.16);
   background:
     linear-gradient(135deg, rgba(250, 115, 21, 0.34), rgba(164, 80, 24, 0.92)),
     #2a1d17;
+}
+
+.workspace-chat-message.is-owned-agent {
+  margin-right: 0;
+  margin-left: auto;
+  background: #232c39;
 }
 
 .workspace-chat-message.is-other {
@@ -6731,6 +7459,8 @@ button {
   display: flex;
   justify-content: center;
   width: 100%;
+  padding: 0 12px;
+  box-sizing: border-box;
 }
 
 .workspace-chat-system-date-divider + .workspace-chat-system-event-row {
@@ -6746,17 +7476,17 @@ button {
   flex: 0 0 auto;
   width: fit-content;
   max-width: min(100%, 760px);
-  height: 34px;
   align-items: center;
   justify-content: center;
   gap: 7px;
   min-height: 34px;
-  padding: 0 13px;
+  padding: 9px 16px;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.03);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
-  overflow: hidden;
+  overflow: visible;
+  box-sizing: border-box;
 }
 
 .workspace-chat-system-event.is-live {
@@ -6795,14 +7525,16 @@ button {
 }
 
 .workspace-chat-system-event-copy {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  flex-wrap: nowrap;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   min-width: 0;
   gap: 5px;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .workspace-chat-system-event-text {
@@ -6810,18 +7542,17 @@ button {
   color: #f3efef;
   font-size: 0.92rem;
   font-weight: 600;
-  line-height: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .workspace-chat-system-event time {
   color: #9a939c;
   font-size: 0.84rem;
   font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
+  line-height: 1.35;
+  white-space: normal;
 }
 
 .workspace-chat-role {
@@ -6832,12 +7563,34 @@ button {
   line-height: 1.35;
 }
 
-.workspace-chat-message.is-self .workspace-chat-role {
+.workspace-chat-message.is-user .workspace-chat-role {
   color: rgba(255, 245, 239, 0.82);
 }
 
+.workspace-chat-message.is-owned-agent .workspace-chat-role,
 .workspace-chat-message.is-other .workspace-chat-role {
   color: var(--workspace-message-accent, rgba(243, 239, 239, 0.76));
+}
+
+.workspace-chat-message-meta {
+  display: flex;
+  align-items: baseline;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 6px 10px;
+}
+
+.workspace-chat-message-time {
+  color: rgba(243, 239, 239, 0.48);
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.workspace-chat-message.is-user .workspace-chat-message-time {
+  color: rgba(255, 245, 239, 0.68);
 }
 
 .workspace-chat-message-top {
@@ -6845,6 +7598,7 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
+  flex-wrap: wrap;
 }
 
 .workspace-chat-rich-text {
@@ -9181,7 +9935,7 @@ a {
   }
 
   .workspace-paper-page {
-    min-height: 1040px;
+    height: 1040px;
   }
 
   .workspace-editor-tabs-bar {
@@ -9204,7 +9958,7 @@ a {
 
   .workspace-paper-body {
     column-count: 1;
-    padding: 30px 24px 38px;
+    padding: 30px 24px 30px;
   }
 
   .workspace-agents-grid {

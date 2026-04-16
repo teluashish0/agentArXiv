@@ -11,6 +11,7 @@ import {
 } from "./paper-reader-navigation";
 import { PaperSearchPanel } from "./paper-search-panel";
 import type { ExplorePaperListItem } from "./paper-view-model";
+import { SupportErrorMessage } from "./support-error-message";
 
 type PaperListResponse = {
   items: ExplorePaperListItem[];
@@ -129,8 +130,7 @@ export function BookmarksContent() {
 
           {loadError ? (
             <article className="empty-state">
-              <h2>Unable to load bookmarked papers.</h2>
-              <p>{loadError}</p>
+              <SupportErrorMessage />
             </article>
           ) : null}
 

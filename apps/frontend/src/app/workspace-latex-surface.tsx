@@ -8,6 +8,7 @@ import type {
   WorkspaceLatexDocument,
   WorkspaceLatexDocumentAsset,
   WorkspacePaperAuthor,
+  WorkspacePaperTemplate,
 } from "./workspace-paper-data";
 
 export type RenderedLatexCaret = {
@@ -113,6 +114,282 @@ type PaperPresenceEntry = {
   status: "editing" | "viewing";
   sectionTitle: string;
 };
+
+type PaginationMetrics = {
+  firstPageCapacityIn: number;
+  pageCapacityIn: number;
+  headingHeightIn: number;
+  paragraphCharsPerLine: number;
+  paragraphLineHeightIn: number;
+  paragraphSpacingIn: number;
+  referenceCharsPerLine: number;
+  referenceLineHeightIn: number;
+  referenceSpacingIn: number;
+  sectionSpacingIn: number;
+};
+
+const PAGE_HEIGHT_IN = 11;
+const DOUBLE_COLUMN_GAP_IN = 0.28;
+const DEFAULT_TEXT_WIDTH_EM = 0.5;
+const PAGINATION_SAFETY_MARGIN_IN = 0.06;
+
+function parseNumericValue(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseLengthInches(value: string) {
+  const trimmedValue = value.trim();
+
+  if (trimmedValue.endsWith("in")) {
+    return parseNumericValue(trimmedValue);
+  }
+
+  if (trimmedValue.endsWith("pt")) {
+    return parseNumericValue(trimmedValue) / 72;
+  }
+
+  return parseNumericValue(trimmedValue);
+}
+
+function parseFontSizePoints(value: string) {
+  const trimmedValue = value.trim();
+
+  if (trimmedValue.endsWith("pt")) {
+    return parseNumericValue(trimmedValue);
+  }
+
+  if (trimmedValue.endsWith("in")) {
+    return parseNumericValue(trimmedValue) * 72;
+  }
+
+  return parseNumericValue(trimmedValue);
+}
+
+function parseShorthandInches(value: string): [number, number, number, number] {
+  const parts = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => parseLengthInches(part));
+
+  if (parts.length === 0) {
+    return [0, 0, 0, 0];
+  }
+
+  const [top = 0, right = top, bottom = top, left = right] = parts;
+  return [top, right, bottom, left];
+}
+
+function computeLineHeightInches(fontSize: string, lineHeight: string) {
+  if (/[a-z]/i.test(lineHeight)) {
+    return parseLengthInches(lineHeight);
+  }
+
+  return (parseFontSizePoints(fontSize) * parseNumericValue(lineHeight)) / 72;
+}
+
+function estimateCharsPerLine(widthIn: number, fontSize: string, widthEm = DEFAULT_TEXT_WIDTH_EM) {
+  const fontSizePoints = parseFontSizePoints(fontSize);
+
+  if (widthIn <= 0 || fontSizePoints <= 0 || widthEm <= 0) {
+    return 24;
+  }
+
+  return Math.max(24, Math.floor((widthIn * 72) / (fontSizePoints * widthEm) * 0.92));
+}
+
+function estimateLineCount(text: string, charsPerLine: number) {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+
+  if (!normalizedText) {
+    return 1;
+  }
+
+  return Math.max(1, Math.ceil(normalizedText.length / Math.max(1, charsPerLine)));
+}
+
+function getBodyColumnWidthInches(
+  typography: WorkspacePaperTemplate["typography"],
+  layoutMode: "single" | "double",
+) {
+  const pageWidthIn = parseLengthInches(typography.pageWidth);
+  const [, rightPaddingIn, , leftPaddingIn] = parseShorthandInches(typography.bodyPadding);
+  const bodyWidthIn = Math.max(1, pageWidthIn - leftPaddingIn - rightPaddingIn);
+
+  if (layoutMode === "double") {
+    return Math.max(1, (bodyWidthIn - DOUBLE_COLUMN_GAP_IN) / 2);
+  }
+
+  return bodyWidthIn;
+}
+
+function estimateHeaderHeightInches(
+  paperTitle: string,
+  authors: WorkspacePaperAuthor[],
+  typography: WorkspacePaperTemplate["typography"],
+) {
+  const [topPaddingIn, rightPaddingIn, bottomPaddingIn, leftPaddingIn] = parseShorthandInches(
+    typography.headerPadding,
+  );
+  const contentWidthIn = Math.max(
+    1,
+    parseLengthInches(typography.pageWidth) - leftPaddingIn - rightPaddingIn,
+  );
+  const titleHeightIn =
+    estimateLineCount(paperTitle, estimateCharsPerLine(contentWidthIn, typography.titleSize, 0.56)) *
+    computeLineHeightInches(typography.titleSize, typography.titleLineHeight);
+  const authorLineHeightIn = computeLineHeightInches(typography.authorNameSize, "1.32");
+  const authorMetaLineHeightIn = computeLineHeightInches(typography.authorMetaSize, "1.28");
+  const correspondenceLineHeightIn = computeLineHeightInches(typography.authorMetaSize, "1.24");
+  const authorLineCount = estimateLineCount(
+    authors.map((author) => author.name).join(", "),
+    estimateCharsPerLine(contentWidthIn, typography.authorNameSize, 0.54),
+  );
+  const { affiliations } = buildAffiliations(authors);
+  const hasCorrespondence = authors.some((author) => author.email.trim().length > 0);
+  const authorBlockGapIn = parseLengthInches(typography.authorBlockGap);
+  const affiliationGapIn = parseLengthInches(typography.affiliationGap);
+  const correspondenceSpacingIn = parseLengthInches(typography.correspondenceSpacing);
+  let authorBlockHeightIn = authorLineCount * authorLineHeightIn;
+
+  if (affiliations.length > 0) {
+    authorBlockHeightIn +=
+      authorBlockGapIn +
+      affiliations.length * authorMetaLineHeightIn +
+      Math.max(0, affiliations.length - 1) * affiliationGapIn;
+  }
+
+  if (hasCorrespondence) {
+    authorBlockHeightIn += authorBlockGapIn + correspondenceSpacingIn + correspondenceLineHeightIn;
+  }
+
+  return (
+    topPaddingIn +
+    titleHeightIn +
+    parseLengthInches(typography.headerGap) +
+    authorBlockHeightIn +
+    bottomPaddingIn
+  );
+}
+
+function estimateFrontMatterHeightInches(
+  template: WorkspacePaperTemplate,
+  abstractText: string | undefined,
+  keywords: string[] | undefined,
+) {
+  if (!abstractText?.trim()) {
+    return 0;
+  }
+
+  const typography = template.typography;
+  const [topPaddingIn, rightPaddingIn, bottomPaddingIn, leftPaddingIn] = parseShorthandInches(
+    typography.frontMatterPadding,
+  );
+  const [abstractTopIn, abstractRightIn, abstractBottomIn, abstractLeftIn] = parseShorthandInches(
+    typography.abstractPadding,
+  );
+  const contentWidthIn = Math.max(
+    1,
+    parseLengthInches(typography.pageWidth) -
+      leftPaddingIn -
+      rightPaddingIn -
+      abstractLeftIn -
+      abstractRightIn,
+  );
+  const abstractLineHeightIn = computeLineHeightInches(
+    typography.abstractTextSize,
+    typography.abstractTextLineHeight,
+  );
+  const abstractLineCount = estimateLineCount(
+    abstractText,
+    estimateCharsPerLine(contentWidthIn, typography.abstractTextSize, 0.52),
+  );
+  let abstractHeightIn = abstractTopIn + abstractBottomIn + abstractLineCount * abstractLineHeightIn;
+
+  if (template.frontMatterStyle === "preprint") {
+    abstractHeightIn +=
+      computeLineHeightInches(typography.abstractHeadingSize, "1.2") +
+      parseLengthInches(typography.abstractHeadingSpacing);
+  }
+
+  let keywordsHeightIn = 0;
+
+  if ((keywords?.length ?? 0) > 0) {
+    const keywordsText = `Keywords: ${keywords?.join(", ") ?? ""}`;
+    const keywordsLineHeightIn = computeLineHeightInches(typography.keywordsSize, "1.34");
+    const keywordsLineCount = estimateLineCount(
+      keywordsText,
+      estimateCharsPerLine(contentWidthIn, typography.keywordsSize, 0.52),
+    );
+
+    keywordsHeightIn =
+      parseLengthInches(typography.keywordsSpacing) +
+      keywordsLineCount * keywordsLineHeightIn;
+  }
+
+  return topPaddingIn + abstractHeightIn + keywordsHeightIn + bottomPaddingIn;
+}
+
+function buildPaginationMetrics(
+  sections: RenderedPaperSection[],
+  template: WorkspacePaperTemplate,
+  paperTitle: string,
+  authors: WorkspacePaperAuthor[],
+  abstractText: string | undefined,
+  keywords: string[] | undefined,
+  layoutMode: "single" | "double",
+) {
+  const bodyColumnWidthIn = getBodyColumnWidthInches(template.typography, layoutMode);
+  const [bodyTopPaddingIn, , bodyBottomPaddingIn] = parseShorthandInches(
+    template.typography.bodyPadding,
+  );
+  const [continuationTopPaddingIn, , continuationBottomPaddingIn] = parseShorthandInches(
+    template.typography.continuationBodyPadding,
+  );
+  const headingHeightIn =
+    computeLineHeightInches(
+      template.typography.sectionTitleSize,
+      template.typography.sectionTitleLineHeight,
+    ) + parseLengthInches(template.typography.sectionTitleSpacing);
+  const paragraphLineHeightIn = computeLineHeightInches(
+    template.typography.paragraphSize,
+    template.typography.paragraphLineHeight,
+  );
+  const paragraphSpacingIn = parseLengthInches(template.typography.paragraphSpacing);
+  const referenceLineHeightIn = computeLineHeightInches(
+    template.typography.referenceSize,
+    template.typography.referenceLineHeight,
+  );
+  const referenceSpacingIn = parseLengthInches(template.typography.referenceSpacing);
+  const firstPageCapacityIn =
+    PAGE_HEIGHT_IN -
+    estimateHeaderHeightInches(paperTitle, authors, template.typography) -
+    estimateFrontMatterHeightInches(template, abstractText, keywords) -
+    bodyTopPaddingIn -
+    bodyBottomPaddingIn -
+    PAGINATION_SAFETY_MARGIN_IN;
+  const pageCapacityIn =
+    PAGE_HEIGHT_IN -
+    continuationTopPaddingIn -
+    continuationBottomPaddingIn -
+    PAGINATION_SAFETY_MARGIN_IN;
+
+  return {
+    firstPageCapacityIn: Math.max(1.2, firstPageCapacityIn),
+    pageCapacityIn: Math.max(1.2, pageCapacityIn),
+    headingHeightIn,
+    paragraphCharsPerLine: estimateCharsPerLine(bodyColumnWidthIn, template.typography.paragraphSize),
+    paragraphLineHeightIn,
+    paragraphSpacingIn,
+    referenceCharsPerLine: estimateCharsPerLine(bodyColumnWidthIn, template.typography.referenceSize),
+    referenceLineHeightIn,
+    referenceSpacingIn,
+    sectionSpacingIn:
+      parseLengthInches(template.typography.sectionSpacing) +
+      (sections.length > 0 ? paragraphSpacingIn * 0.1 : 0),
+  } satisfies PaginationMetrics;
+}
 
 function getAgentInitials(name: string) {
   return name
@@ -437,42 +714,50 @@ function normalizeHighlightRange(paragraph: string, start: number, end: number) 
   };
 }
 
-function estimateAssetUnits(
+function estimateAssetHeightInches(
   asset: RenderedPaperAsset,
   layoutMode: "single" | "double",
 ) {
   if (asset.kind === "image") {
-    return layoutMode === "double" ? 1.35 : 1.7;
+    return layoutMode === "double" ? 2.05 : 2.4;
   }
 
   if (asset.kind === "table") {
-    return 0.85 + asset.rows.length * (layoutMode === "double" ? 0.12 : 0.15);
+    return 0.8 + asset.rows.length * (layoutMode === "double" ? 0.22 : 0.26);
   }
 
   const textLength = asset.text.length;
-  return 0.38 + textLength / (layoutMode === "double" ? 1600 : 1100);
+  return 0.45 + textLength / (layoutMode === "double" ? 900 : 650);
 }
 
-function estimateParagraphUnits(
+function estimateParagraphContentHeightInches(
   paragraph: string,
-  layoutMode: "single" | "double",
-  isFirstParagraphInSection: boolean,
+  metrics: PaginationMetrics,
 ) {
-  const base =
-    layoutMode === "double"
-      ? isFirstParagraphInSection
-        ? 0.24
-        : 0.18
-      : isFirstParagraphInSection
-        ? 0.3
-        : 0.22;
-  const textWeight = paragraph.length / (layoutMode === "double" ? 2600 : 1850);
+  const lineCount = estimateLineCount(paragraph, metrics.paragraphCharsPerLine);
 
-  return base + textWeight;
+  return lineCount * metrics.paragraphLineHeightIn;
 }
 
-function estimateHeadingUnits(layoutMode: "single" | "double") {
-  return layoutMode === "double" ? 0.24 : 0.32;
+function estimateReferencesHeightInches(
+  references: string[] | undefined,
+  metrics: PaginationMetrics,
+) {
+  if (!references?.length) {
+    return 0;
+  }
+
+  return (
+    metrics.headingHeightIn +
+    metrics.sectionSpacingIn +
+    references.reduce((totalHeight, reference, referenceIndex) => {
+      return (
+        totalHeight +
+        estimateLineCount(reference, metrics.referenceCharsPerLine) * metrics.referenceLineHeightIn +
+        (referenceIndex > 0 ? metrics.referenceSpacingIn : 0)
+      );
+    }, 0)
+  );
 }
 
 function buildSectionFragment(
@@ -511,25 +796,34 @@ function buildSectionFragment(
 function paginateDocument(
   sections: RenderedPaperSection[],
   references: string[] | undefined,
+  template: WorkspacePaperTemplate,
+  paperTitle: string,
+  authors: WorkspacePaperAuthor[],
+  abstractText: string | undefined,
+  keywords: string[] | undefined,
   layoutMode: "single" | "double",
-  hasFrontMatter: boolean,
 ) {
   const pages: RenderedLatexDocument["pages"] = [];
-  const firstPageCapacity = layoutMode === "double" ? 4.45 : 4.75;
-  const pageCapacity = layoutMode === "double" ? 5.8 : 6.25;
-  const frontMatterUnits = hasFrontMatter ? (layoutMode === "double" ? 2.0 : 2.3) : 1.2;
-  const referencesUnits = references?.length ? 1 + references.length * (layoutMode === "double" ? 0.2 : 0.26) : 0;
-  const headingUnits = estimateHeadingUnits(layoutMode);
+  const metrics = buildPaginationMetrics(
+    sections,
+    template,
+    paperTitle,
+    authors,
+    abstractText,
+    keywords,
+    layoutMode,
+  );
+  const referencesHeightIn = estimateReferencesHeightInches(references, metrics);
 
   let currentPage: RenderedLatexDocument["pages"][number] = {
     number: 1,
     sections: [],
     includeHeader: true,
-    includeFrontmatter: hasFrontMatter,
+    includeFrontmatter: Boolean(abstractText?.trim()),
     includeReferences: false,
   };
-  let currentUnits = frontMatterUnits;
-  let currentCapacity = firstPageCapacity;
+  let currentHeightIn = 0;
+  let currentCapacityIn = metrics.firstPageCapacityIn;
 
   const pushNewPage = () => {
     pages.push(currentPage);
@@ -540,8 +834,8 @@ function paginateDocument(
       includeFrontmatter: false,
       includeReferences: false,
     };
-    currentUnits = 0;
-    currentCapacity = pageCapacity;
+    currentHeightIn = 0;
+    currentCapacityIn = metrics.pageCapacityIn;
   };
 
   for (const section of sections) {
@@ -552,34 +846,44 @@ function paginateDocument(
     const hasContent = section.paragraphs.length > 0 || section.assets.length > 0;
 
     if (!hasContent) {
+      const emptySectionHeightIn = metrics.headingHeightIn + metrics.sectionSpacingIn;
+
+      if (currentPage.sections.length > 0 && currentHeightIn + emptySectionHeightIn > currentCapacityIn) {
+        pushNewPage();
+      }
+
       currentPage.sections.push(
         buildSectionFragment(section, currentPage.number, fragmentIndex, 0, [""], []),
       );
-      currentUnits += headingUnits;
+      currentHeightIn += emptySectionHeightIn;
       continue;
     }
 
     while (paragraphIndex < section.paragraphs.length || assetIndex < section.assets.length) {
       let fragmentParagraphs: string[] = [];
       let fragmentAssets: RenderedPaperAsset[] = [];
-      let fragmentUnits = fragmentIndex === 0 ? headingUnits : 0;
+      let fragmentHeightIn = fragmentIndex === 0 ? metrics.headingHeightIn : 0;
+      let fragmentBlockCount = 0;
       const paragraphStart = paragraphIndex;
 
       if (
         currentPage.sections.length > 0 &&
-        currentUnits + fragmentUnits > currentCapacity
+        currentHeightIn + fragmentHeightIn + metrics.sectionSpacingIn > currentCapacityIn
       ) {
         pushNewPage();
       }
 
       while (paragraphIndex < section.paragraphs.length) {
         const paragraph = section.paragraphs[paragraphIndex] ?? "";
-        const paragraphUnits = estimateParagraphUnits(
-          paragraph,
-          layoutMode,
-          paragraphIndex === 0,
-        );
-        const wouldOverflow = currentUnits + fragmentUnits + paragraphUnits > currentCapacity;
+        const paragraphHeightIn = estimateParagraphContentHeightInches(paragraph, metrics);
+        const paragraphGapIn = fragmentBlockCount > 0 ? metrics.paragraphSpacingIn : 0;
+        const wouldOverflow =
+          currentHeightIn +
+            fragmentHeightIn +
+            paragraphGapIn +
+            paragraphHeightIn +
+            metrics.sectionSpacingIn >
+          currentCapacityIn;
 
         if (wouldOverflow && fragmentParagraphs.length + fragmentAssets.length > 0) {
           break;
@@ -587,14 +891,15 @@ function paginateDocument(
 
         if (wouldOverflow && currentPage.sections.length > 0) {
           pushNewPage();
-          fragmentUnits = fragmentIndex === 0 ? headingUnits : 0;
+          fragmentHeightIn = fragmentIndex === 0 ? metrics.headingHeightIn : 0;
           fragmentParagraphs = [];
           fragmentAssets = [];
           continue;
         }
 
         fragmentParagraphs.push(paragraph);
-        fragmentUnits += paragraphUnits;
+        fragmentHeightIn += paragraphGapIn + paragraphHeightIn;
+        fragmentBlockCount += 1;
         paragraphIndex += 1;
       }
 
@@ -603,8 +908,15 @@ function paginateDocument(
         assetIndex < section.assets.length
       ) {
         const asset = section.assets[assetIndex]!;
-        const assetUnits = estimateAssetUnits(asset, layoutMode);
-        const wouldOverflow = currentUnits + fragmentUnits + assetUnits > currentCapacity;
+        const assetHeightIn = estimateAssetHeightInches(asset, layoutMode);
+        const assetGapIn = fragmentBlockCount > 0 ? metrics.paragraphSpacingIn : 0;
+        const wouldOverflow =
+          currentHeightIn +
+            fragmentHeightIn +
+            assetGapIn +
+            assetHeightIn +
+            metrics.sectionSpacingIn >
+          currentCapacityIn;
 
         if (wouldOverflow && fragmentParagraphs.length + fragmentAssets.length > 0) {
           break;
@@ -612,14 +924,15 @@ function paginateDocument(
 
         if (wouldOverflow && currentPage.sections.length > 0) {
           pushNewPage();
-          fragmentUnits = fragmentIndex === 0 ? headingUnits : 0;
+          fragmentHeightIn = fragmentIndex === 0 ? metrics.headingHeightIn : 0;
           fragmentParagraphs = [];
           fragmentAssets = [];
           continue;
         }
 
         fragmentAssets.push(asset);
-        fragmentUnits += assetUnits;
+        fragmentHeightIn += assetGapIn + assetHeightIn;
+        fragmentBlockCount += 1;
         assetIndex += 1;
       }
 
@@ -633,7 +946,7 @@ function paginateDocument(
           fragmentAssets,
         ),
       );
-      currentUnits += fragmentUnits;
+      currentHeightIn += fragmentHeightIn + metrics.sectionSpacingIn;
       fragmentIndex += 1;
 
       if (paragraphIndex < section.paragraphs.length || assetIndex < section.assets.length) {
@@ -643,7 +956,10 @@ function paginateDocument(
   }
 
   if (references?.length) {
-    if (currentPage.sections.length > 0 && currentUnits + referencesUnits > currentCapacity) {
+    if (
+      currentPage.sections.length > 0 &&
+      currentHeightIn + referencesHeightIn > currentCapacityIn
+    ) {
       pushNewPage();
       currentPage.includeReferences = true;
     } else {
@@ -775,7 +1091,17 @@ export function buildRenderedLatexDocument(
   }
 
   sourceLines.push(...document.closingLines);
-  const pages = paginateDocument(sections, document.references, document.layoutMode ?? template.layoutMode, Boolean(document.abstractText));
+  const layoutMode = document.layoutMode ?? template.layoutMode;
+  const pages = paginateDocument(
+    sections,
+    document.references,
+    template,
+    document.paperTitle,
+    document.authors,
+    document.abstractText,
+    document.keywords,
+    layoutMode,
+  );
   const firstPageNumberBySectionId = new Map<string, number>();
   const caretPageNumberBySectionId = new Map<string, number>();
 
@@ -799,7 +1125,7 @@ export function buildRenderedLatexDocument(
     abstractText: document.abstractText,
     keywords: document.keywords,
     references: document.references,
-    layoutMode: document.layoutMode ?? template.layoutMode,
+    layoutMode,
     templateId: document.templateId,
     sections: sections.map((section) => ({
       ...section,

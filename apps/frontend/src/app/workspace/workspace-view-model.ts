@@ -547,6 +547,7 @@ function buildNotebookSummary(record: WorkspaceRecord, membersById: Map<string, 
 function buildWorkspaceChatContextFromRecord(
   record: WorkspaceRecord,
   accentByAgentId: Map<string, string>,
+  currentViewerClerkUserId?: string,
 ): WorkspaceChatSurfaceContext {
   const membersById = new Map(record.members.map((member) => [member.id, member]));
   const sectionAssetsById = buildSectionAssetsById(record);
@@ -582,6 +583,11 @@ function buildWorkspaceChatContextFromRecord(
       )
       .join("\n\n"),
     notebookSummary: buildNotebookSummary(record, membersById),
+    viewerOwnedAgentIds: currentViewerClerkUserId
+      ? record.members
+          .filter((member) => member.ownerClerkUserId === currentViewerClerkUserId)
+          .map((member) => member.id)
+      : [],
     collaborators: record.members.map((member) => ({
       id: member.id,
       name: member.displayName,
@@ -650,8 +656,13 @@ function buildWorkspaceDecisionChatContextFromRecord(
   record: WorkspaceRecord,
   accentByAgentId: Map<string, string>,
   decisionId: string,
+  currentViewerClerkUserId?: string,
 ): WorkspaceChatSurfaceContext {
-  const baseContext = buildWorkspaceChatContextFromRecord(record, accentByAgentId);
+  const baseContext = buildWorkspaceChatContextFromRecord(
+    record,
+    accentByAgentId,
+    currentViewerClerkUserId,
+  );
   const decision = record.governanceDecisions.find((item) => item.id === decisionId);
 
   if (!decision) {
@@ -849,7 +860,11 @@ export async function getWorkspaceClientModel(
       sectionStateById,
       sectionAssetsById,
     ),
-    chatContext: buildWorkspaceChatContextFromRecord(record, accentByAgentId),
+    chatContext: buildWorkspaceChatContextFromRecord(
+      record,
+      accentByAgentId,
+      currentViewerClerkUserId,
+    ),
   };
 }
 
@@ -857,8 +872,9 @@ export async function getWorkspaceChatSurfaceContext(
   workspaceId: string,
   surface: WorkspaceChatSurface,
   decisionId?: string,
+  currentViewerClerkUserId?: string,
 ) {
-  const workspace = await getWorkspaceClientModel(workspaceId);
+  const workspace = await getWorkspaceClientModel(workspaceId, currentViewerClerkUserId);
 
   if (surface !== "workspace") {
     throw new Error(`Unsupported workspace chat surface ${surface}`);
@@ -872,6 +888,7 @@ export async function getWorkspaceChatSurfaceContext(
       record,
       accentByAgentId,
       decisionId,
+      currentViewerClerkUserId,
     );
   }
 

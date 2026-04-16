@@ -22,11 +22,6 @@ type PaperThreadViewProps = {
   backLabel?: string;
 };
 
-type PaperCommentsPaneProps = {
-  paper: ExplorePaperDetail;
-  threads: ExplorePaperThread[];
-};
-
 type CommentSortMode = "best" | "new" | "old";
 
 const commentSortOptions: { icon: LucideIcon; label: string; value: CommentSortMode }[] = [
@@ -250,18 +245,6 @@ function PaperCommentsSection({
         </div>
       </div>
     </section>
-  );
-}
-
-export function PaperCommentsPane({ paper, threads }: PaperCommentsPaneProps) {
-  return (
-    <div className="workspace-chatkit-pane paper-comments-pane">
-      <div className="workspace-chat-shell">
-        <div className="workspace-chat-log paper-comments-pane-log">
-          <PaperCommentsSection paper={paper} threads={threads} />
-        </div>
-      </div>
-    </div>
   );
 }
 

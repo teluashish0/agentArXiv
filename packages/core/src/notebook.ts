@@ -57,6 +57,16 @@ type JupyterKernelMessage = {
   metadata?: Record<string, unknown>;
 };
 
+type JupyterWebSocket = {
+  send(data: string): void;
+  close(): void;
+  addEventListener?: (
+    type: string,
+    listener: (event: { data?: unknown }) => void,
+  ) => void;
+  on?: (type: string, listener: (...args: unknown[]) => void) => void;
+};
+
 function normalizeNotebookTextContent(value: unknown) {
   if (typeof value === "string") {
     return toNotebookSource(value);
@@ -207,6 +217,53 @@ function createJupyterRequestUrl(
   }
 
   return url;
+}
+
+async function createJupyterWebSocket(url: string): Promise<JupyterWebSocket> {
+  if (typeof WebSocket !== "undefined") {
+    return new WebSocket(url) as JupyterWebSocket;
+  }
+
+  const dynamicImport = new Function(
+    "specifier",
+    "return import(specifier)",
+  ) as (specifier: string) => Promise<{ WebSocket: new (url: string) => unknown }>;
+  const { WebSocket: NodeWebSocket } = await dynamicImport("ws");
+  return new NodeWebSocket(url) as unknown as JupyterWebSocket;
+}
+
+function addJupyterWebSocketListener(
+  websocket: JupyterWebSocket,
+  type: "error" | "open" | "message",
+  listener: (event: { data?: unknown }) => void,
+) {
+  if (typeof websocket.addEventListener === "function") {
+    websocket.addEventListener(type, listener);
+    return;
+  }
+
+  if (typeof websocket.on === "function") {
+    if (type === "message") {
+      websocket.on("message", (data: unknown) => {
+        listener({
+          data:
+            typeof data === "string" || data instanceof ArrayBuffer
+              ? data
+              : String(data),
+        });
+      });
+      return;
+    }
+
+    websocket.on(type, () => {
+      listener({});
+    });
+    return;
+  }
+
+  throw new Error(
+    "The current runtime does not provide a usable WebSocket implementation.",
+  );
 }
 
 function buildJupyterRequestHeaders(
@@ -518,6 +575,7 @@ export async function executeWorkspaceNotebookJupyterCode(
   )
     .toString()
     .replace(/^http/i, "ws");
+  const websocket = await createJupyterWebSocket(wsUrl);
 
   let executionCount: number | null = null;
   let replyStatus = "ok";
@@ -530,7 +588,6 @@ export async function executeWorkspaceNotebookJupyterCode(
     stdout: string;
     stderr: string;
   }>((resolve, reject) => {
-    const websocket = new WebSocket(wsUrl);
     const timeoutId = globalThis.setTimeout(() => {
       if (settled) {
         return;
@@ -555,13 +612,13 @@ export async function executeWorkspaceNotebookJupyterCode(
       callback();
     };
 
-    websocket.addEventListener("error", () => {
+    addJupyterWebSocketListener(websocket, "error", () => {
       finish(() => {
         reject(new Error("Unable to connect to the Jupyter kernel channel."));
       });
     });
 
-    websocket.addEventListener("open", () => {
+    addJupyterWebSocketListener(websocket, "open", () => {
       websocket.send(
         JSON.stringify({
           channel: "shell",
@@ -587,7 +644,7 @@ export async function executeWorkspaceNotebookJupyterCode(
       );
     });
 
-    websocket.addEventListener("message", (event) => {
+    addJupyterWebSocketListener(websocket, "message", (event) => {
       let message: JupyterKernelMessage;
 
       try {

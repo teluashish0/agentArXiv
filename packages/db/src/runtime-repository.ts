@@ -168,8 +168,14 @@ type PaperListFilters = {
   sourceType?: AgentPaper["sourceType"];
 };
 
-const ACCOUNT_TOKEN_TTL_DAYS = 90;
+const DEFAULT_ACCOUNT_TOKEN_TTL_DAYS = 30;
+const ONBOARDING_ACCOUNT_TOKEN_TTL_HOURS = 1;
 const GOVERNANCE_SUPERMAJORITY_FRACTION = 2 / 3;
+
+type CreateAccountAccessTokenOptions = {
+  expiresAt?: Date;
+  maxUses?: number;
+};
 
 export class GovernanceDecisionRequiredError extends Error {
   status = 409;
@@ -186,6 +192,10 @@ export class GovernanceDecisionRequiredError extends Error {
 
 function createId(prefix: string, length = 10) {
   return `${prefix}_${randomUUID().replace(/-/g, "").slice(0, length)}`;
+}
+
+function addHours(value: Date, hours: number) {
+  return new Date(value.getTime() + hours * 60 * 60 * 1000);
 }
 
 function arrayOrEmpty<T>(value: T[] | null | undefined): T[] {
@@ -1048,10 +1058,31 @@ class PrismaRuntimeRepository {
     return { plain, hash };
   }
 
+  private createRecoveryKey() {
+    const plain = `agentarxiv_recovery_${randomUUID().replace(/-/g, "")}`;
+    const hash = this.hashSecret(plain);
+    return { plain, hash };
+  }
+
   private createAccountAccessTokenValue() {
     const plain = `agentarxiv_account_${randomUUID().replace(/-/g, "")}`;
     const hash = this.hashSecret(plain);
     return { plain, hash };
+  }
+
+  private formatCreatedAccountAccessToken(input: {
+    token: string;
+    createdAt: Date;
+    expiresAt?: Date;
+    maxUses?: number;
+  }) {
+    return {
+      token: input.token,
+      endpoint: this.getRegistrationEndpoint(),
+      createdAt: input.createdAt.toISOString(),
+      expiresAt: input.expiresAt?.toISOString(),
+      maxUses: input.maxUses,
+    };
   }
 
   private createAccountOnboardingTokenValue() {
@@ -1635,6 +1666,14 @@ class PrismaRuntimeRepository {
       throw new Error("Invalid account token");
     }
 
+    if (
+      accessToken.maxUses !== undefined &&
+      accessToken.maxUses !== null &&
+      (accessToken.useCount ?? 0) >= accessToken.maxUses
+    ) {
+      throw new Error("Invalid account token");
+    }
+
     return accessToken;
   }
 
@@ -1643,6 +1682,22 @@ class PrismaRuntimeRepository {
 
     if (!agent) {
       throw new Error(`Agent ${agentId} not found`);
+    }
+
+    return agent;
+  }
+
+  private assertAccountOwnsAgent(
+    state: AgentArxivState,
+    ownerClerkUserId: string,
+    agentId: string,
+  ) {
+    const agent = this.findAgent(state, agentId);
+
+    if (agent.ownerClerkUserId !== ownerClerkUserId) {
+      throw new Error(
+        `Agent ${agentId} does not belong to the authenticated account`,
+      );
     }
 
     return agent;
@@ -1888,13 +1943,25 @@ class PrismaRuntimeRepository {
     }
   }
 
+  private maybeFindWorkspaceDocument(
+    state: AgentArxivState,
+    workspaceId: string,
+    surface: WorkspaceDocument["surface"],
+  ) {
+    return state.workspaceDocuments.find(
+      (item) => item.workspaceId === workspaceId && item.surface === surface,
+    );
+  }
+
   private findWorkspaceDocument(
     state: AgentArxivState,
     workspaceId: string,
     surface: WorkspaceDocument["surface"],
   ) {
-    const document = state.workspaceDocuments.find(
-      (item) => item.workspaceId === workspaceId && item.surface === surface,
+    const document = this.maybeFindWorkspaceDocument(
+      state,
+      workspaceId,
+      surface,
     );
 
     if (!document) {
@@ -2152,6 +2219,67 @@ class PrismaRuntimeRepository {
         },
       });
     }
+  }
+
+  private async ensureWorkspaceProposalDocumentTx(
+    tx: Prisma.TransactionClient,
+    state: AgentArxivState,
+    workspace: WorkspaceBrief,
+    now: string,
+  ) {
+    if (this.maybeFindWorkspaceDocument(state, workspace.id, "proposal")) {
+      return false;
+    }
+
+    const primaryPaperTitle =
+      this.maybeFindWorkspaceDocument(state, workspace.id, "draft")?.paperTitle ??
+      workspace.title;
+    const proposalDocument = this.buildWorkspaceDocument({
+      state,
+      workspaceId: workspace.id,
+      surface: "proposal",
+      title: "Proposal",
+      paperTitle: primaryPaperTitle,
+      templateId: workspace.templateName,
+      memberAgentIds: workspace.memberAgentIds,
+      now,
+    });
+
+    await tx.workspaceDocument.create({
+      data: {
+        id: proposalDocument.id,
+        workspaceId: proposalDocument.workspaceId,
+        surface: proposalDocument.surface,
+        title: proposalDocument.title,
+        paperTitle: proposalDocument.paperTitle,
+        templateId: proposalDocument.templateId,
+        authors: proposalDocument.authors as Prisma.InputJsonValue,
+        abstractText: proposalDocument.abstractText,
+        keywords: proposalDocument.keywords,
+        references: proposalDocument.references,
+        sectionOrder: proposalDocument.sectionOrder,
+        createdAt: new Date(proposalDocument.createdAt),
+        updatedAt: new Date(proposalDocument.updatedAt),
+      },
+    });
+    await tx.workspaceDocumentSection.createMany({
+      data: proposalDocument.sections.map((section) => ({
+        id: section.id,
+        documentId: proposalDocument.id,
+        workspaceId: section.workspaceId,
+        surface: section.surface,
+        slotId: section.slotId,
+        title: section.title,
+        role: section.role,
+        agentId: section.agentId,
+        pageHint: section.pageHint,
+        content: section.content,
+        createdAt: new Date(section.createdAt),
+        updatedAt: new Date(section.updatedAt),
+      })),
+    });
+
+    return true;
   }
 
   private buildWorkspaceDocument(input: {
@@ -3245,11 +3373,15 @@ class PrismaRuntimeRepository {
     state: AgentArxivState,
     workspaceId: string,
   ) {
-    const proposalDocument = this.findWorkspaceDocument(
+    const proposalDocument = this.maybeFindWorkspaceDocument(
       state,
       workspaceId,
       "proposal",
     );
+
+    if (!proposalDocument) {
+      return false;
+    }
 
     return (
       proposalDocument.sections.length > 0 &&
@@ -4181,10 +4313,26 @@ class PrismaRuntimeRepository {
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
-  async createAccountAccessToken(ownerClerkUserId: string) {
+  async createAccountAccessToken(
+    ownerClerkUserId: string,
+    options?: CreateAccountAccessTokenOptions,
+  ) {
     const token = this.createAccountAccessTokenValue();
     const now = new Date();
-    const expiresAt = addDays(now, ACCOUNT_TOKEN_TTL_DAYS);
+    const expiresAt =
+      options?.expiresAt ?? addDays(now, DEFAULT_ACCOUNT_TOKEN_TTL_DAYS);
+    const maxUses = options?.maxUses;
+
+    if (expiresAt.getTime() <= now.getTime()) {
+      throw new Error("Account token expiry must be in the future");
+    }
+
+    if (
+      maxUses !== undefined &&
+      (!Number.isInteger(maxUses) || maxUses <= 0)
+    ) {
+      throw new Error("Account token usage limit must be a positive integer");
+    }
 
     await this.runWrite(async (tx) => {
       await tx.accountAccessToken.create({
@@ -4193,17 +4341,19 @@ class PrismaRuntimeRepository {
           tokenHash: token.hash,
           ownerClerkUserId,
           createdAt: now,
+          useCount: 0,
+          maxUses: maxUses ?? null,
           expiresAt,
         },
       });
     });
 
-    return {
+    return this.formatCreatedAccountAccessToken({
       token: token.plain,
-      endpoint: this.getRegistrationEndpoint(),
-      createdAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    };
+      createdAt: now,
+      expiresAt,
+      maxUses,
+    });
   }
 
   async createAccountOnboardingSession() {
@@ -4359,7 +4509,7 @@ class PrismaRuntimeRepository {
 
       const token = this.createAccountAccessTokenValue();
       const now = new Date();
-      const expiresAt = addDays(now, ACCOUNT_TOKEN_TTL_DAYS);
+      const expiresAt = addHours(now, ONBOARDING_ACCOUNT_TOKEN_TTL_HOURS);
 
       await tx.accountAccessToken.create({
         data: {
@@ -4367,6 +4517,8 @@ class PrismaRuntimeRepository {
           tokenHash: token.hash,
           ownerClerkUserId: resolvedSession.ownerClerkUserId,
           createdAt: now,
+          useCount: 0,
+          maxUses: 1,
           expiresAt,
         },
       });
@@ -4382,12 +4534,12 @@ class PrismaRuntimeRepository {
       });
 
       return this.formatAccountOnboardingSession(completedSession, {
-        accountToken: {
+        accountToken: this.formatCreatedAccountAccessToken({
           token: token.plain,
-          endpoint: this.getRegistrationEndpoint(),
-          createdAt: now.toISOString(),
-          expiresAt: expiresAt.toISOString(),
-        },
+          createdAt: now,
+          expiresAt,
+          maxUses: 1,
+        }),
         message:
           "Account token issued. Reconnect with Authorization: Bearer <account_token> and call register_agent.",
       });
@@ -4981,6 +5133,33 @@ class PrismaRuntimeRepository {
     });
 
     return this.getGovernanceDecisionById(parsed.decisionId);
+  }
+
+  async castGovernanceVoteAsAgent(input: {
+    decisionId: string;
+    agentId: string;
+    vote: GovernanceDecisionVoteChoice;
+    rationale?: string;
+  }) {
+    const decisionId = input.decisionId.trim();
+    const agentId = input.agentId.trim();
+    const vote = input.vote;
+    const rationale = input.rationale?.trim();
+    const state = await this.loadState();
+    const agent = this.findAgent(state, agentId);
+
+    if (!agent.ownerClerkUserId) {
+      throw new Error(
+        `Agent ${agentId} is not linked to an authenticated account and cannot cast governance votes.`,
+      );
+    }
+
+    return this.castGovernanceVote({
+      decisionId,
+      voterAccountClerkUserId: agent.ownerClerkUserId,
+      vote,
+      rationale,
+    });
   }
 
   async listInvites(filters?: InviteListFilters) {
@@ -5675,6 +5854,18 @@ class PrismaRuntimeRepository {
     return agent;
   }
 
+  async resolveAgentByRecoveryKey(recoveryKey: string) {
+    const state = await this.loadState();
+    const hash = this.hashSecret(recoveryKey);
+    const agent = state.agents.find((item) => item.recoveryKeyHash === hash);
+
+    if (!agent) {
+      throw new Error("Invalid recovery key");
+    }
+
+    return agent;
+  }
+
   async authenticateAccountToken(token: string) {
     const tokenHash = this.hashSecret(token);
     const now = new Date();
@@ -5693,12 +5884,22 @@ class PrismaRuntimeRepository {
         throw new Error("Invalid account token");
       }
 
+      if (
+        matchedToken.maxUses !== null &&
+        matchedToken.useCount >= matchedToken.maxUses
+      ) {
+        throw new Error("Invalid account token");
+      }
+
       await tx.accountAccessToken.update({
         where: {
           id: matchedToken.id,
         },
         data: {
           lastUsedAt: now,
+          useCount: {
+            increment: 1,
+          },
         },
       });
 
@@ -5713,6 +5914,16 @@ class PrismaRuntimeRepository {
 
     if (agent.id !== agentId) {
       throw new Error(`API key belongs to ${agent.id}, not ${agentId}`);
+    }
+
+    return agent;
+  }
+
+  async authenticateAgentRecovery(agentId: string, recoveryKey: string) {
+    const agent = await this.resolveAgentByRecoveryKey(recoveryKey);
+
+    if (agent.id !== agentId) {
+      throw new Error(`Recovery key belongs to ${agent.id}, not ${agentId}`);
     }
 
     return agent;
@@ -5912,13 +6123,28 @@ class PrismaRuntimeRepository {
     let state = await this.loadState();
     let workspace = this.findWorkspace(state, workspaceId);
     const now = new Date().toISOString();
+    const proposalDocumentMissing = !this.maybeFindWorkspaceDocument(
+      state,
+      workspaceId,
+      "proposal",
+    );
     const notebookState = this.ensureWorkspaceNotebookState(state, workspaceId);
 
-    if (this.workspaceDocumentAuthorsNeedSync(state, workspace) || notebookState.changed) {
+    if (
+      proposalDocumentMissing ||
+      this.workspaceDocumentAuthorsNeedSync(state, workspace) ||
+      notebookState.changed
+    ) {
       await this.runWrite(async (tx) => {
         const freshState = await loadStateFromPrisma(tx);
         const freshWorkspace = this.findWorkspace(freshState, workspaceId);
 
+        await this.ensureWorkspaceProposalDocumentTx(
+          tx,
+          freshState,
+          freshWorkspace,
+          now,
+        );
         await this.syncWorkspaceDocumentAuthorsTx(tx, freshState, freshWorkspace, now);
         await this.ensureWorkspaceNotebookTx(tx, freshState, workspaceId);
       });
@@ -7244,6 +7470,7 @@ class PrismaRuntimeRepository {
 
     const agentId = createId("agent");
     const apiKey = this.createApiKey();
+    const recoveryKey = this.createRecoveryKey();
     const now = new Date().toISOString();
 
     await this.runWrite(async (tx) => {
@@ -7281,6 +7508,7 @@ class PrismaRuntimeRepository {
           completedWorkspaces: 0,
           discoverable: true,
           apiKeyHash: apiKey.hash,
+          recoveryKeyHash: recoveryKey.hash,
           ownerClerkUserId: options.ownerClerkUserId,
           createdAt: new Date(now),
           updatedAt: new Date(now),
@@ -7294,6 +7522,7 @@ class PrismaRuntimeRepository {
     return {
       agent,
       apiKey: apiKey.plain,
+      recoveryKey: recoveryKey.plain,
       endpoint: this.getRegistrationEndpoint(),
     };
   }
@@ -7359,6 +7588,54 @@ class PrismaRuntimeRepository {
     });
 
     return { agentId, apiKey: apiKey.plain };
+  }
+
+  async reissueAgentKey(agentId: string, ownerClerkUserId: string) {
+    const apiKey = this.createApiKey();
+    const recoveryKey = this.createRecoveryKey();
+    const now = new Date().toISOString();
+
+    await this.runWrite(async (tx) => {
+      const state = await loadStateFromPrisma(tx);
+      this.assertAccountOwnsAgent(state, ownerClerkUserId, agentId);
+
+      await tx.agentProfile.update({
+        where: {
+          id: agentId,
+        },
+        data: {
+          apiKeyHash: apiKey.hash,
+          recoveryKeyHash: recoveryKey.hash,
+          updatedAt: new Date(now),
+        },
+      });
+    });
+
+    return { agentId, apiKey: apiKey.plain, recoveryKey: recoveryKey.plain };
+  }
+
+  async reissueAgentKeyFromRecovery(agentId: string) {
+    const apiKey = this.createApiKey();
+    const recoveryKey = this.createRecoveryKey();
+    const now = new Date().toISOString();
+
+    await this.runWrite(async (tx) => {
+      const state = await loadStateFromPrisma(tx);
+      this.findAgent(state, agentId);
+
+      await tx.agentProfile.update({
+        where: {
+          id: agentId,
+        },
+        data: {
+          apiKeyHash: apiKey.hash,
+          recoveryKeyHash: recoveryKey.hash,
+          updatedAt: new Date(now),
+        },
+      });
+    });
+
+    return { agentId, apiKey: apiKey.plain, recoveryKey: recoveryKey.plain };
   }
 
   async listWorkspaceMatches(agentId: string) {

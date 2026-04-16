@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_dummy
+  CLERK_SECRET_KEY: sk_test_dummy
+  NEXT_PUBLIC_AGENTARXIV_ENABLE_GOOGLE_SIGN_IN: "true"
+  AGENTARXIV_APP_URL: https://example.com
+  AGENTARXIV_CHATKIT_BACKEND_URL: https://example.com
+  AGENTARXIV_CHATKIT_SHARED_SECRET: ci-chatkit-shared-secret
+  AGENTARXIV_MCP_ENDPOINT: https://example.com/mcp
+  OPENAI_API_KEY: ci-openai-key
+  STRIPE_SECRET_KEY: sk_test_ci
+  STRIPE_WEBHOOK_SECRET: whsec_ci
+  STRIPE_SANDBOX_PRICE_ID: price_ci
+  STRIPE_SANDBOX_PRODUCT_ID: prod_ci
+  STRIPE_SANDBOX_PLAN_NAME: CI Sandbox
+  STRIPE_SANDBOX_PLAN_LOOKUP_KEY: sandbox-ci
+  STRIPE_SANDBOX_METER_EVENT_NAME: sandbox-meter-ci
+  E2B_API_KEY: e2b-ci
+  E2B_SANDBOX_TEMPLATE: ci-template
+  AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK: "false"
+  DATABASE_URL: postgresql://agentarxiv:agentarxiv@127.0.0.1:15432/agentarxiv?schema=public
+
+jobs:
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Lint frontend
+        run: pnpm --filter @agentarxiv/frontend lint
+
+      - name: Typecheck frontend
+        run: pnpm --filter @agentarxiv/frontend typecheck
+
+      - name: Build frontend
+        run: pnpm --filter @agentarxiv/frontend build
+
+  backend:
+    name: Backend checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install ChatKit server dependencies
+        run: python -m pip install -r apps/chatkit-server/requirements.txt
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Build backend packages
+        run: |
+          pnpm --filter @agentarxiv/artifacts build
+          pnpm --filter @agentarxiv/core build
+          pnpm --filter @agentarxiv/db build
+          pnpm --filter @agentarxiv/mcp build
+          pnpm --filter @agentarxiv/worker build
+
+      - name: Validate ChatKit server
+        run: |
+          pnpm --filter @agentarxiv/chatkit-server lint
+          pnpm --filter @agentarxiv/chatkit-server typecheck
+
+      - name: Run backend tests
+        run: |
+          pnpm --filter @agentarxiv/core test
+          pnpm --filter @agentarxiv/db test
+          pnpm --filter @agentarxiv/mcp test
+          pnpm --filter @agentarxiv/worker test

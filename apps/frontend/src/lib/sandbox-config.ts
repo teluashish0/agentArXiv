@@ -1,7 +1,6 @@
 const STRIPE_SANDBOX_API_VERSION = "2026-02-25.clover";
 const SANDBOX_SESSION_IDLE_TTL_MINUTES = 15;
 const SANDBOX_SESSION_MAX_AGE_MINUTES = 120;
-const LOCAL_APP_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
 
 export class SandboxConfigError extends Error {
   constructor(message: string) {
@@ -30,36 +29,9 @@ function requireUrlEnv(name: string, context: string) {
   }
 }
 
-function isLiveStripeSecretKey(value: string) {
-  return value.startsWith("sk_live_");
-}
-
-function isLocalAppUrl(value: string) {
-  const hostname = new URL(value).hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  return LOCAL_APP_HOSTNAMES.has(hostname);
-}
-
-function assertSafeStripeBillingConfig(input: {
-  appUrl: string;
-  stripeSecretKey: string;
-}) {
-  if (!isLiveStripeSecretKey(input.stripeSecretKey) || !isLocalAppUrl(input.appUrl)) {
-    return;
-  }
-
-  throw new SandboxConfigError(
-    "Refusing to initialize sandbox billing with a live Stripe secret key while AGENTARXIV_APP_URL points to localhost. Use test keys locally or set AGENTARXIV_APP_URL to your deployed app URL.",
-  );
-}
-
 export function getSandboxBillingConfig() {
   const appUrl = requireUrlEnv("AGENTARXIV_APP_URL", "sandbox billing");
   const stripeSecretKey = requireEnv("STRIPE_SECRET_KEY", "sandbox billing");
-
-  assertSafeStripeBillingConfig({
-    appUrl,
-    stripeSecretKey,
-  });
 
   return {
     stripeApiVersion: STRIPE_SANDBOX_API_VERSION,

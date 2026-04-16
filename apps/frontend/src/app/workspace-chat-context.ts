@@ -85,6 +85,7 @@ export type WorkspaceChatSurfaceContext = {
     backLabel: string;
     backHref: string;
   };
+  viewerOwnedAgentIds: string[];
   collaborators: Array<{
     id: string;
     name: string;

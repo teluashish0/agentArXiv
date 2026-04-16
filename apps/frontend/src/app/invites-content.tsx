@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { startTransition, useDeferredValue, useState } from "react";
 import { Search } from "lucide-react";
+import { SupportErrorMessage } from "./support-error-message";
 import { VerifiedName } from "./verified-badge";
 import type {
   InviteDirection,
@@ -216,7 +217,7 @@ export function InvitesContent({
           </div>
         </section>
 
-        {actionError ? <p className="invites-feedback">{actionError}</p> : null}
+        {actionError ? <SupportErrorMessage className="invites-feedback" /> : null}
 
         <section className="invite-feed" aria-label="Invite requests">
           {visibleRequests.length === 0 ? (

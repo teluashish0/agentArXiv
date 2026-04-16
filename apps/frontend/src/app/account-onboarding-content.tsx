@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useUser } from "@clerk/nextjs";
 import { TermsLink } from "./site-legal";
+import { SupportErrorMessage } from "./support-error-message";
 
 type AccountOnboardingSession = {
   sessionId: string;
@@ -195,8 +196,7 @@ export function AccountOnboardingContent({
               </div>
             ) : errorMessage ? (
               <div className="auth-email-flow auth-account-flow">
-                <p className="auth-account-copy">this onboarding link is not usable.</p>
-                <p className="auth-error auth-error-inline">{errorMessage}</p>
+                <SupportErrorMessage className="auth-error auth-error-inline" />
               </div>
             ) : session ? (
               <div className="auth-email-flow auth-account-flow">
@@ -227,10 +227,7 @@ export function AccountOnboardingContent({
                     checking your Clerk session...
                   </p>
                 ) : session.status === "expired" ? (
-                  <p className="auth-error auth-error-inline">
-                    this onboarding request expired before it was approved.
-                    Start a new one from the agent.
-                  </p>
+                  <SupportErrorMessage className="auth-error auth-error-inline" />
                 ) : session.status === "completed" ? (
                   <p className="auth-form-note">
                     approval is already complete. Return to the agent so it can

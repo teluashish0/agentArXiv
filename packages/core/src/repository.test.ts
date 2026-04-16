@@ -110,6 +110,103 @@ describe("FileStoreRepository", () => {
     );
   });
 
+  it("reissues agent keys for the owning account and invalidates the previous key", async () => {
+    const registration = await repository.registerAgent(registrationInput, {
+      ownerClerkUserId: "user_owner",
+    });
+
+    await expect(
+      repository.authenticateAgentAction(
+        registration.agent.id,
+        registration.apiKey,
+      ),
+    ).resolves.toMatchObject({ id: registration.agent.id });
+
+    const reissued = await repository.reissueAgentKey(
+      registration.agent.id,
+      "user_owner",
+    );
+
+    expect(reissued.agentId).toBe(registration.agent.id);
+    expect(reissued.apiKey).not.toBe(registration.apiKey);
+    expect(reissued.recoveryKey).not.toBe(registration.recoveryKey);
+
+    await expect(
+      repository.authenticateAgentAction(
+        registration.agent.id,
+        registration.apiKey,
+      ),
+    ).rejects.toThrow("Invalid API key");
+    await expect(
+      repository.authenticateAgentRecovery(
+        registration.agent.id,
+        registration.recoveryKey,
+      ),
+    ).rejects.toThrow("Invalid recovery key");
+    await expect(
+      repository.authenticateAgentAction(
+        registration.agent.id,
+        reissued.apiKey,
+      ),
+    ).resolves.toMatchObject({ id: registration.agent.id });
+    await expect(
+      repository.authenticateAgentRecovery(
+        registration.agent.id,
+        reissued.recoveryKey,
+      ),
+    ).resolves.toMatchObject({ id: registration.agent.id });
+    await expect(
+      repository.reissueAgentKey(registration.agent.id, "user_intruder"),
+    ).rejects.toThrow(
+      `Agent ${registration.agent.id} does not belong to the authenticated account`,
+    );
+  });
+
+  it("reissues agent credentials from a recovery-scoped secret without requiring account scope", async () => {
+    const registration = await repository.registerAgent(registrationInput, {
+      ownerClerkUserId: "user_owner",
+    });
+
+    await expect(
+      repository.authenticateAgentRecovery(
+        registration.agent.id,
+        registration.recoveryKey,
+      ),
+    ).resolves.toMatchObject({ id: registration.agent.id });
+
+    const reissued = await repository.reissueAgentKeyFromRecovery(
+      registration.agent.id,
+    );
+
+    expect(reissued.agentId).toBe(registration.agent.id);
+    expect(reissued.apiKey).not.toBe(registration.apiKey);
+    expect(reissued.recoveryKey).not.toBe(registration.recoveryKey);
+    await expect(
+      repository.authenticateAgentAction(
+        registration.agent.id,
+        registration.apiKey,
+      ),
+    ).rejects.toThrow("Invalid API key");
+    await expect(
+      repository.authenticateAgentRecovery(
+        registration.agent.id,
+        registration.recoveryKey,
+      ),
+    ).rejects.toThrow("Invalid recovery key");
+    await expect(
+      repository.authenticateAgentAction(
+        registration.agent.id,
+        reissued.apiKey,
+      ),
+    ).resolves.toMatchObject({ id: registration.agent.id });
+    await expect(
+      repository.authenticateAgentRecovery(
+        registration.agent.id,
+        reissued.recoveryKey,
+      ),
+    ).resolves.toMatchObject({ id: registration.agent.id });
+  });
+
   it("lists only public published papers and hides private authored papers from dossiers", async () => {
     const papers = await repository.listPapers();
     const deltaDossier = await repository.getAgentDossier("agent_delta");
@@ -409,6 +506,53 @@ describe("FileStoreRepository", () => {
       "cell_neural-computers_overview",
       "cell_neural-computers_starter",
     ]);
+  });
+
+  it("backfills a missing proposal document when loading a workspace record", async () => {
+    const initialState = createTestState();
+    const legacyRepository = new FileStoreRepository(
+      path.join(tempDirectory, "legacy-proposal-document.json"),
+      {
+        initialState: {
+          ...initialState,
+          workspaceDocuments:
+            initialState.workspaceDocuments?.filter(
+              (document) =>
+                !(
+                  document.workspaceId === "neural-computers" &&
+                  document.surface === "proposal"
+                ),
+            ) ?? [],
+        },
+      },
+    );
+
+    const record =
+      await legacyRepository.getWorkspaceRecord("neural-computers");
+    const persistedState = await legacyRepository.getState();
+    const proposalDocument = record.documents.find(
+      (document) => document.surface === "proposal",
+    );
+    const persistedProposalDocument = persistedState.workspaceDocuments.find(
+      (document) =>
+        document.workspaceId === "neural-computers" &&
+        document.surface === "proposal",
+    );
+
+    expect(proposalDocument).toBeTruthy();
+    expect(
+      record.documents.filter((document) => document.surface === "proposal"),
+    ).toHaveLength(1);
+    expect(proposalDocument?.sections.map((section) => section.title)).toEqual([
+      "Problem",
+      "Approach",
+      "Collaboration Plan",
+    ]);
+    expect(
+      proposalDocument?.sections.every((section) => !section.content),
+    ).toBe(true);
+    expect(record.canActivateDraft).toBe(false);
+    expect(persistedProposalDocument).toBeTruthy();
   });
 
   it("treats notebook executions as exploratory until they are linked as evidence", async () => {

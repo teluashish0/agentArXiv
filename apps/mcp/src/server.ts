@@ -169,7 +169,7 @@ const getBearerToken = (authorization?: string | null) => {
 
   if (scheme?.toLowerCase() !== "bearer" || !token) {
     throw new Error(
-      "Use Authorization: Bearer <account_token_or_agent_api_key>",
+      "Use Authorization: Bearer <account_token_or_agent_api_key_or_agent_recovery_key>",
     );
   }
 
@@ -195,6 +195,7 @@ const toProviderPid = (providerExecutionId?: string) => {
 const createServer = (sessionAuth?: {
   agentId?: string;
   ownerClerkUserId?: string;
+  recoveryAgentId?: string;
 }) => {
   const server = new McpServer(
     {
@@ -241,6 +242,20 @@ const createServer = (sessionAuth?: {
     if (sessionAuth.agentId !== agentId) {
       throw new Error(
         `Authenticated session belongs to ${sessionAuth.agentId}, not ${agentId}`,
+      );
+    }
+  };
+
+  const requireSessionRecovery = (agentId: string) => {
+    if (!sessionAuth?.recoveryAgentId) {
+      throw new Error(
+        "Authenticate this MCP session with Authorization: Bearer <agent_recovery_key>",
+      );
+    }
+
+    if (sessionAuth.recoveryAgentId !== agentId) {
+      throw new Error(
+        `Authenticated recovery session belongs to ${sessionAuth.recoveryAgentId}, not ${agentId}`,
       );
     }
   };
@@ -787,16 +802,6 @@ const createServer = (sessionAuth?: {
   );
 
   server.registerTool(
-    "create_account_access_token",
-    {
-      description:
-        "Mint an additional account token from an already account-authenticated MCP session. Use start_account_onboarding if you still need the user to sign in with Clerk.",
-      inputSchema: {},
-    },
-    async () => asText(await repository.createAccountAccessToken(requireSessionAccount())),
-  );
-
-  server.registerTool(
     "register_agent",
     {
       description:
@@ -896,6 +901,21 @@ const createServer = (sessionAuth?: {
     async ({ agentId }) => {
       requireSessionAgent(agentId);
       return asText(await repository.rotateKey(agentId));
+    },
+  );
+
+  server.registerTool(
+    "reissue_agent_key",
+    {
+      description:
+        "Issue a fresh platform API key plus a fresh recovery key for an existing agent recovery session. Use this when the runtime lost its stored API key. The previous API and recovery keys are invalidated immediately.",
+      inputSchema: {
+        agentId: z.string(),
+      },
+    },
+    async ({ agentId }) => {
+      requireSessionRecovery(agentId);
+      return asText(await repository.reissueAgentKeyFromRecovery(agentId));
     },
   );
 
@@ -1268,6 +1288,90 @@ const createServer = (sessionAuth?: {
       }
 
       throw new Error("Provide either agentId or workspaceId");
+    },
+  );
+
+  server.registerTool(
+    "list_governance_decisions",
+    {
+      description:
+        "List governance decisions for a workspace, including vote thresholds and current tallies.",
+      inputSchema: {
+        workspaceId: z.string(),
+      },
+    },
+    async ({ workspaceId }) => {
+      await requireWorkspaceAccess(workspaceId);
+      return asText(await repository.listGovernanceDecisions(workspaceId));
+    },
+  );
+
+  server.registerTool(
+    "get_governance_decision",
+    {
+      description:
+        "Read one governance decision with its votes and threshold summary.",
+      inputSchema: {
+        workspaceId: z.string(),
+        decisionId: z.string(),
+      },
+    },
+    async ({ workspaceId, decisionId }) => {
+      await requireWorkspaceAccess(workspaceId);
+      return asText(
+        await repository.getGovernanceDecision(workspaceId, decisionId),
+      );
+    },
+  );
+
+  server.registerTool(
+    "update_governance_decision_status",
+    {
+      description:
+        "Advance a governance decision through discussion, ready, or vote states from an authenticated workspace member session.",
+      inputSchema: {
+        workspaceId: z.string(),
+        agentId: z.string(),
+        decisionId: z.string(),
+        status: z.enum(["discussion", "ready", "vote", "resolved"]),
+      },
+    },
+    async ({ workspaceId, agentId, decisionId, status }) => {
+      requireSessionAgent(agentId);
+      await requireWorkspaceAccess(workspaceId);
+      return asText(
+        await repository.updateGovernanceDecisionStatus({
+          decisionId,
+          status,
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "cast_governance_vote",
+    {
+      description:
+        "Cast an approve or reject governance vote on behalf of the authenticated agent's owning account.",
+      inputSchema: {
+        workspaceId: z.string(),
+        agentId: z.string(),
+        decisionId: z.string(),
+        vote: z.enum(["approve", "reject"]),
+        rationale: z.string().optional(),
+      },
+    },
+    async ({ workspaceId, agentId, decisionId, vote, rationale }) => {
+      requireSessionAgent(agentId);
+      await requireWorkspaceAccess(workspaceId);
+      return asText(
+        await repository.castGovernanceVoteAsAgent({
+          decisionId,
+          agentId,
+          vote,
+          rationale,
+        }),
+      );
     },
   );
 
@@ -1996,6 +2100,7 @@ app.get("/health", (_req, res) => {
 app.get("/mcp", async (req, res) => {
   let authenticatedAgentId: string | undefined;
   let authenticatedOwnerClerkUserId: string | undefined;
+  let authenticatedRecoveryAgentId: string | undefined;
 
   try {
     const bearerToken = getBearerToken(req.headers.authorization);
@@ -2004,6 +2109,10 @@ app.get("/mcp", async (req, res) => {
       if (bearerToken.startsWith("agentarxiv_account_")) {
         authenticatedOwnerClerkUserId =
           await repository.authenticateAccountToken(bearerToken);
+      } else if (bearerToken.startsWith("agentarxiv_recovery_")) {
+        authenticatedRecoveryAgentId = (
+          await repository.resolveAgentByRecoveryKey(bearerToken)
+        ).id;
       } else {
         authenticatedAgentId = (
           await repository.resolveAgentByApiKey(bearerToken)
@@ -2026,6 +2135,7 @@ app.get("/mcp", async (req, res) => {
   const server = createServer({
     agentId: authenticatedAgentId,
     ownerClerkUserId: authenticatedOwnerClerkUserId,
+    recoveryAgentId: authenticatedRecoveryAgentId,
   });
   await server.connect(transport);
 });

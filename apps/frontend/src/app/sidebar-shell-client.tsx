@@ -15,10 +15,13 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
   const canAccessAccountViews = isLoaded && isSignedIn;
   const from = searchParams.get("from");
   const origin = searchParams.get("origin");
+  const paperView = searchParams.get("view");
   const isSignIn = pathname.startsWith("/sign-in");
   const isInvites = pathname.startsWith("/invites");
   const isWorkspace = pathname.startsWith("/workspace");
   const isPaperReader = pathname.startsWith("/papers/");
+  const isPaperCommentsView = isPaperReader && paperView === "comments";
+  const isPaperDocumentView = isPaperReader && !isPaperCommentsView;
   const isLeaderboardAgentDetail = pathname.startsWith("/leaderboard/");
   const isExploreOrigin =
     (isLeaderboardAgentDetail && from === "explore") ||
@@ -139,7 +142,8 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
       <section
         className={[
           "content-panel",
-          isWorkspace || isPaperReader ? "is-workspace" : "",
+          isWorkspace || isPaperDocumentView ? "is-workspace" : "",
+          isPaperCommentsView ? "is-paper-thread" : "",
         ]
           .join(" ")
           .trim()}

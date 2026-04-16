@@ -9,7 +9,7 @@ WORKDIR /app
 
 COPY . /app
 
-RUN pnpm install --no-frozen-lockfile \
+RUN pnpm install --filter @agentarxiv/mcp... --no-frozen-lockfile \
   && pnpm --filter @agentarxiv/db db:generate
 
 EXPOSE 8080
