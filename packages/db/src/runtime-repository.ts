@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { renderManuscriptAsset } from "@agentarxiv/artifacts";
 
 import {
@@ -176,6 +177,61 @@ type CreateAccountAccessTokenOptions = {
   expiresAt?: Date;
   maxUses?: number;
 };
+
+const INTERNAL_AGENT_GUIDANCE_URL = new URL(
+  "../../../AGENTS.md",
+  import.meta.url,
+);
+const INTERNAL_RESEARCH_REFERENCES_URL = new URL(
+  "../../../docs/internal/research-references.md",
+  import.meta.url,
+);
+const DEFAULT_INTERNAL_AGENT_GUIDANCE = [
+  "Prefer novelty, evidence, and manuscript quality over speed.",
+  "Use multi-pass research loops instead of one-shot answers.",
+  "Turn visuals, tables, equations, and linked evidence into section-level value when they sharpen the paper.",
+].join("\n");
+const DEFAULT_INTERNAL_RESEARCH_REFERENCES = [
+  "Use this optional pack only for workflows that need explicit research-method guidance.",
+  "Focus on contribution clarity, evidence appraisal, reviewer-style critique, and manuscript auditability.",
+].join("\n");
+
+let cachedInternalAgentGuidance: string | undefined;
+let cachedInternalResearchReferences: string | undefined;
+
+function getInternalAgentGuidance() {
+  if (cachedInternalAgentGuidance !== undefined) {
+    return cachedInternalAgentGuidance;
+  }
+
+  try {
+    const guidance = readFileSync(INTERNAL_AGENT_GUIDANCE_URL, "utf8").trim();
+    cachedInternalAgentGuidance = guidance || DEFAULT_INTERNAL_AGENT_GUIDANCE;
+  } catch {
+    cachedInternalAgentGuidance = DEFAULT_INTERNAL_AGENT_GUIDANCE;
+  }
+
+  return cachedInternalAgentGuidance;
+}
+
+function getInternalResearchReferences() {
+  if (cachedInternalResearchReferences !== undefined) {
+    return cachedInternalResearchReferences;
+  }
+
+  try {
+    const references = readFileSync(
+      INTERNAL_RESEARCH_REFERENCES_URL,
+      "utf8",
+    ).trim();
+    cachedInternalResearchReferences =
+      references || DEFAULT_INTERNAL_RESEARCH_REFERENCES;
+  } catch {
+    cachedInternalResearchReferences = DEFAULT_INTERNAL_RESEARCH_REFERENCES;
+  }
+
+  return cachedInternalResearchReferences;
+}
 
 export class GovernanceDecisionRequiredError extends Error {
   status = 409;
@@ -2634,6 +2690,26 @@ class PrismaRuntimeRepository {
     const hasEvaluationSection = titles.some((title) =>
       /(evaluation|results|experiment|benchmark)/.test(title),
     );
+    const technicalSections = draftDocument.sections.filter((section) =>
+      /(method|analysis|objective|loss|derivation|model|theory|algorithm)/.test(
+        section.title.toLowerCase(),
+      ),
+    );
+    const technicalSectionWithFormulaCount = technicalSections.filter((section) =>
+      /(\$\$[\s\S]+?\$\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]|\\begin\{(?:equation\*?|align\*?|alignat\*?|gather\*?|CD)\}[\s\S]+?\\end\{(?:equation\*?|align\*?|alignat\*?|gather\*?|CD)\})/.test(
+        section.content ?? "",
+      ),
+    ).length;
+
+    if (technicalSections.length > 0 && technicalSectionWithFormulaCount === 0) {
+      recommendedActions.push(
+        "If the method or analysis depends on an objective, update rule, likelihood, or scaling relation, add at least one rendered equation and verify it against sources or sandbox/notebook checks.",
+      );
+    } else if (technicalSectionWithFormulaCount > 0) {
+      rewardSignals.push(
+        "Well-explained equations rendered in the manuscript make technical claims easier to audit, especially when the notation matches linked evidence or notebook checks.",
+      );
+    }
 
     if (hasArchitectureSection && figureCount + diagramCount === 0) {
       recommendedActions.push(
@@ -2953,17 +3029,27 @@ class PrismaRuntimeRepository {
     skill: SkillDefinition,
     objective: string,
     inputs: Record<string, string>,
+    contextLines: string[] = [],
   ) {
-    const substituted = skill.promptTemplate.replace(
-      /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
-      (_, key: string) => inputs[key] ?? `{{${key}}}`,
-    );
+    const substituted = skill.promptTemplate
+      .replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) =>
+        inputs[key] ?? `{{${key}}}`,
+      )
+      .replaceAll(
+        "{{agentarxiv_research_references}}",
+        getInternalResearchReferences(),
+      );
 
     return [
       `Skill: ${skill.name} (${skill.slug})`,
       `Objective: ${objective}`,
       `Engine: ${skill.runtime.engine}`,
       "",
+      "Internal platform guidance (AGENTS.md):",
+      getInternalAgentGuidance(),
+      ...(contextLines.length > 0 ? ["", ...contextLines] : []),
+      "",
+      "Skill template:",
       substituted,
       "",
       "Inputs:",
@@ -2971,6 +3057,66 @@ class PrismaRuntimeRepository {
       "",
       `Expected output sections: ${skill.runtime.outputSections.join(", ")}`,
     ].join("\n");
+  }
+
+  private buildSkillExecutionContext(
+    state: AgentArxivState,
+    input: {
+      workspaceId?: string;
+      sectionId?: string;
+    },
+  ) {
+    if (!input.workspaceId) {
+      return [];
+    }
+
+    const report = this.buildWorkspaceManuscriptReport(state, input.workspaceId);
+    const lines = [
+      "Workspace manuscript context:",
+      `- Paper title: ${report.paperTitle}`,
+      `- Workflow stage: ${report.stage}`,
+      `- Manuscript readiness score: ${report.score}`,
+      `- Accepted sections: ${report.checklist.acceptedSectionCount}/${report.checklist.totalSectionCount}`,
+      `- References: ${report.checklist.referenceCount}`,
+      `- Linked assets: ${report.checklist.linkedAssetCount}`,
+      "",
+      "Current manuscript reward signals:",
+      ...report.rewardSignals.map((signal) => `- ${signal}`),
+      "",
+      "Current manuscript gaps to close:",
+      ...(report.recommendedActions.length > 0
+        ? report.recommendedActions.map((action) => `- ${action}`)
+        : ["- Maintain the current quality bar while deepening novelty, evidence, or clarity."]),
+    ];
+
+    if (!input.sectionId) {
+      return lines;
+    }
+
+    const sectionGuidance = report.sections.find(
+      (section) => section.id === input.sectionId,
+    );
+
+    if (!sectionGuidance) {
+      return lines;
+    }
+
+    return [
+      ...lines,
+      "",
+      "Section-specific artifact guidance:",
+      `- Section: ${sectionGuidance.title}`,
+      `- Status: ${sectionGuidance.status}`,
+      `- Existing linked artifacts: ${sectionGuidance.artifactCount}`,
+      `- Should have visual: ${sectionGuidance.shouldHaveVisual ? "yes" : "no"}`,
+      ...(sectionGuidance.recommendedAssetType
+        ? [`- Recommended asset type: ${sectionGuidance.recommendedAssetType}`]
+        : []),
+      ...(sectionGuidance.recommendedAssetTemplate
+        ? [`- Recommended asset template: ${sectionGuidance.recommendedAssetTemplate}`]
+        : []),
+      `- Guidance: ${sectionGuidance.artifactGuidance}`,
+    ];
   }
 
   private listInstalledSkillsFromState(
@@ -7387,6 +7533,10 @@ class PrismaRuntimeRepository {
         skill,
         parsed.objective,
         parsed.inputs,
+        this.buildSkillExecutionContext(state, {
+          workspaceId: parsed.workspaceId,
+          sectionId: parsed.sectionId,
+        }),
       );
       const output = {
         summary: `Prepared ${skill.name} execution bundle for ${parsed.objective}.`,

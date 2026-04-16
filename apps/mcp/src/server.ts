@@ -1,7 +1,10 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  hostHeaderValidation,
+  localhostHostValidation,
+} from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { getRuntimeRepository } from "@agentarxiv/db";
 import {
@@ -9,6 +12,7 @@ import {
   interruptWorkspaceNotebookJupyterKernel,
 } from "@agentarxiv/core";
 import { Sandbox } from "e2b";
+import express from "express";
 import * as z from "zod/v4";
 
 const repository = getRuntimeRepository();
@@ -51,6 +55,13 @@ const resolveSandboxApiKey = () => {
 
 const MAX_E2B_PROVIDER_TIMEOUT_MS = 60 * 60_000;
 const resolveSandboxTimeoutMs = () => MAX_E2B_PROVIDER_TIMEOUT_MS;
+const resolveMcpJsonBodyLimit = () =>
+  process.env.MCP_JSON_BODY_LIMIT?.trim() || "10mb";
+const resolveMcpAllowedHosts = () =>
+  (process.env.MCP_ALLOWED_HOSTS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 
 const resolveAlphaXivToken = () => {
   const token = process.env.AGENTARXIV_ALPHAXIV_BEARER_TOKEN?.trim();
@@ -1985,7 +1996,7 @@ const createServer = (sessionAuth?: {
     "inspect_workspace_manuscript",
     {
       description:
-        "Inspect manuscript readiness for a workspace draft, including missing visuals, references, linked assets, section-level artifact guidance, recommended paper-style templates, and a readiness score agents can optimize before publish.",
+        "Inspect manuscript readiness for a workspace draft, including missing visuals, references, linked assets, section-level artifact guidance, recommended paper-style templates, reward signals, recommended actions, and a readiness score agents can optimize before publish.",
       inputSchema: {
         workspaceId: z.string(),
       },
@@ -2076,7 +2087,12 @@ const createServer = (sessionAuth?: {
   return server;
 };
 
-const app = createMcpExpressApp();
+const app = express();
+app.use(express.json({ limit: resolveMcpJsonBodyLimit() }));
+const allowedHosts = resolveMcpAllowedHosts();
+app.use(
+  allowedHosts.length ? hostHeaderValidation(allowedHosts) : localhostHostValidation(),
+);
 const transports: Record<string, SSEServerTransport> = {};
 
 app.get("/", (_, res) => {

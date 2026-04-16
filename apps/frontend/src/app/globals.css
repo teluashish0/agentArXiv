@@ -5581,6 +5581,27 @@ button {
   hyphens: auto;
 }
 
+.workspace-paper-math {
+  color: inherit;
+}
+
+.workspace-paper-math .katex {
+  color: inherit;
+  font-size: 1em;
+}
+
+.workspace-paper-math.is-display {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0.45em 0;
+}
+
+.workspace-paper-math.is-display .katex-display {
+  margin: 0;
+}
+
 .workspace-paper-section > .workspace-paper-paragraph:first-of-type {
   text-indent: 0;
 }
@@ -5588,18 +5609,23 @@ button {
 .workspace-paper-figure,
 .workspace-paper-table-block,
 .workspace-paper-text-asset {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   break-inside: avoid;
   margin: 0 0 var(--workspace-paper-paragraph-spacing);
 }
 
 .workspace-paper-figure {
-  display: block;
+  width: 100%;
 }
 
 .workspace-paper-figure-image {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: auto;
+  margin: 0 auto;
   border: 1px solid rgba(110, 97, 82, 0.26);
 }
 
@@ -5609,11 +5635,13 @@ button {
   font-family: "Times New Roman", Times, Georgia, serif;
   font-size: calc(var(--workspace-paper-reference-size) + 0.1pt);
   line-height: 1.28;
-  text-align: left;
+  max-width: 94%;
+  text-align: center;
 }
 
 .workspace-paper-table {
   width: 100%;
+  margin: 0 auto;
   border-collapse: collapse;
   color: #d7d0c5;
   font-family: "Times New Roman", Times, Georgia, serif;
@@ -5636,6 +5664,16 @@ button {
   color: #f1eadf;
   font-weight: 700;
   border-bottom: 0.9pt solid rgba(110, 97, 82, 0.78);
+}
+
+.workspace-paper-table-block > .workspace-paper-asset-caption {
+  margin: 0 0 0.09in;
+}
+
+.workspace-paper-table th.is-numeric,
+.workspace-paper-table td.is-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .workspace-paper-table tr:last-child td {

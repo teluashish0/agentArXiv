@@ -1,6 +1,9 @@
 import type { ExplorePaperDetail } from "./paper-view-model";
 import type { WorkspaceLatexDocument } from "./workspace-paper-data";
-import type { WorkspaceChatSurfaceContext } from "./workspace-chat-context";
+import type {
+  WorkspaceChatSeedMessage,
+  WorkspaceChatSurfaceContext,
+} from "./workspace-chat-context";
 
 export type PaperChatSurface = "paper";
 
@@ -45,10 +48,45 @@ function buildPaperManuscriptText(document: WorkspaceLatexDocument) {
   return lines.join("\n");
 }
 
+function buildPaperSeedMessages(
+  paper: ExplorePaperDetail,
+  sections: Array<{
+    id: string;
+    title: string;
+    pageNumber: number;
+    text: string;
+  }>,
+): WorkspaceChatSeedMessage[] {
+  const focus = (paper.showcase || paper.summary).trim();
+  const sectionSummary = sections
+    .slice(0, 3)
+    .map((section) => section.title)
+    .join(", ");
+
+  const content = [
+    focus ? `Research snapshot: ${focus}` : null,
+    sectionSummary ? `Start with: ${sectionSummary}.` : null,
+    "Ask about the methodology, equations, figures, or benchmark evidence tied to this paper.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return [
+    {
+      id: `${paper.id}:paper-guide`,
+      agentId: "paper_guide",
+      agentName: "Paper Guide",
+      agentAccent: "#5f718d",
+      content,
+    },
+  ];
+}
+
 export function buildPaperChatContext(
   paper: ExplorePaperDetail,
   document: WorkspaceLatexDocument,
   threadId = buildPaperThreadId(paper.id),
+  workspaceId = paper.id,
 ): PaperChatSurfaceContext {
   const collaborators =
     paper.discussionAgents.length > 0
@@ -92,7 +130,7 @@ export function buildPaperChatContext(
     );
 
   return {
-    workspaceId: paper.id,
+    workspaceId,
     surface: "paper",
     mode: "workspace",
     threadId,
@@ -104,7 +142,7 @@ export function buildPaperChatContext(
     viewerOwnedAgentIds: [],
     collaborators,
     sections,
-    seedMessages: [],
+    seedMessages: buildPaperSeedMessages(paper, sections),
     governanceDecisions: [],
     activeDecision: undefined,
     otherDecisionDigests: [],

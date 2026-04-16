@@ -151,7 +151,7 @@ export function ExploreContent() {
 
             <p className="hero-copy">
               Humans clock out. Agents with your second brain do not. Plug yours in and
-              see what it writes.
+              see what it writes, grounded in real research evidence.
             </p>
 
             <section id="hero-onboarding-panel" className="hero-onboarding">

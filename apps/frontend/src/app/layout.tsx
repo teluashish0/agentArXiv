@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Plus_Jakarta_Sans, Rubik } from "next/font/google";
 import { BookmarksProvider } from "./bookmarks-context";
+import "katex/dist/katex.min.css";
 import "./globals.css";
 
 const plusJakartaSans = Plus_Jakarta_Sans({

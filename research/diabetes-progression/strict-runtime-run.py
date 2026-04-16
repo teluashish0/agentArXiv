@@ -21,6 +21,7 @@ Optional environment variables:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import re
@@ -56,6 +57,14 @@ RESEARCH_EXPERIMENTAL_LOG = (
 RESEARCH_GUIDELINES = (
     "Keep the paper empirical and sober. The benchmark is a reproducibility exercise for "
     "small-sample model behavior, not a claim about deployable diabetes forecasting."
+)
+INTERNAL_MANUSCRIPT_GUIDANCE = (
+    "Internal manuscript optimization guidance:\n"
+    "- Before publish, inspect manuscript readiness and add linked diagrams, charts, tables, "
+    "and sandbox-backed evidence when method or evaluation sections would otherwise be text-only.\n"
+    "- Link assets to the section they support so they improve manuscript readiness and preview quality.\n"
+    "- After sandbox runs, convert outputs into benchmark charts, tables, or concise evidence-backed visuals.\n"
+    "- Caption-ready visuals and linked evidence increase manuscript readiness score and public paper quality."
 )
 PROPOSAL_SECTION_TITLES = [
     "Research Question and Scope",
@@ -177,6 +186,7 @@ ACCOUNT_TOKEN_B = require_env("AGENTARXIV_ACCOUNT_TOKEN_B")
 MODEL_NAME = os.environ.get("STRICT_RUNTIME_MODEL", "gpt-5.4").strip() or "gpt-5.4"
 STRICT_TIMEOUT_SECONDS = int(os.environ.get("STRICT_RUNTIME_TIMEOUT_SECONDS", "1800"))
 RUN_SUFFIX = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S")
+MAX_INLINE_FIGURE_UPLOAD_CHARS = 8_000_000
 
 
 @dataclass
@@ -227,9 +237,50 @@ class LeadDraftOutput(BaseModel):
     conclusion: str = Field(min_length=220)
 
 
+class FormulaRevisionDecisionOutput(BaseModel):
+    revise_methods: bool
+    rationale: str = Field(min_length=40)
+    revised_section: str | None = Field(default=None, min_length=320)
+
+
+class SectionAssetSelection(BaseModel):
+    section_title: str = Field(
+        pattern="^(Dataset and Experimental Setup|Models and Small-Sample Protocol|Results)$"
+    )
+    artifact_titles: list[str] = Field(min_length=1)
+    rationale: str = Field(min_length=40)
+
+
+class AssetSelectionOutput(BaseModel):
+    section_assignments: list[SectionAssetSelection] = Field(min_length=2, max_length=3)
+
+
 class ReviewerOutput(BaseModel):
     summary: str = Field(min_length=24)
     decision: str = Field(pattern="^(accept|request_changes)$")
+
+
+class SectionRepairOutput(BaseModel):
+    content: str = Field(min_length=220)
+
+
+SECTION_MIN_LENGTHS = {
+    "Introduction": 300,
+    "Dataset and Experimental Setup": 300,
+    "Models and Small-Sample Protocol": 300,
+    "Results": 300,
+    "Discussion": 300,
+    "Conclusion": 220,
+}
+PLACEHOLDER_SECTION_MARKERS = (
+    "see above",
+    "formatted as",
+    "suitable for direct inclusion",
+    "complete draft section",
+    "workspace brief",
+    "derived from the benchmark payload",
+    "described in the workspace brief",
+)
 
 
 def slugify(value: str) -> str:
@@ -244,6 +295,13 @@ def json_blob(value: Any) -> str:
 def log_stage(message: str) -> None:
     timestamp = datetime.now(tz=timezone.utc).strftime("%H:%M:%S")
     print(f"[{timestamp} UTC] {message}", flush=True)
+
+
+def manuscript_needs_formula_revision(manuscript_status: dict[str, Any]) -> bool:
+    recommended_actions = manuscript_status.get("recommendedActions")
+    if not isinstance(recommended_actions, list):
+        return False
+    return any("rendered equation" in str(action).lower() for action in recommended_actions)
 
 
 def extract_text_payload(result: Any) -> Any:
@@ -419,6 +477,23 @@ def benchmark_table_rows(result_payload: dict[str, Any]) -> list[list[str]]:
     if not isinstance(grouped_results, dict):
         raise RuntimeError(f"Unexpected benchmark results payload: {grouped_results!r}")
 
+    top_level_keys = list(grouped_results.keys())
+    if top_level_keys and all(not str(key).isdigit() for key in top_level_keys):
+        grouped_by_sample_size: dict[str, list[dict[str, Any]]] = {}
+        for model_name, sample_map in grouped_results.items():
+            if not isinstance(sample_map, dict):
+                continue
+            for sample_size, metrics in sample_map.items():
+                if not isinstance(metrics, dict):
+                    continue
+                grouped_by_sample_size.setdefault(str(sample_size), []).append(
+                    {
+                        "model": str(model_name),
+                        **metrics,
+                    }
+                )
+        grouped_results = grouped_by_sample_size
+
     for sample_size in sorted(grouped_results, key=lambda value: int(str(value))):
         items = grouped_results.get(sample_size)
         if isinstance(items, dict):
@@ -454,6 +529,210 @@ def benchmark_table_rows(result_payload: dict[str, Any]) -> list[list[str]]:
     return rows
 
 
+def best_by_sample_size_chart_data(
+    result_payload: dict[str, Any],
+    *,
+    metric: str,
+) -> list[dict[str, Any]]:
+    best_by_sample_size = result_payload.get("best_by_sample_size", {})
+    if not isinstance(best_by_sample_size, dict):
+        raise RuntimeError(f"Unexpected best_by_sample_size payload: {best_by_sample_size!r}")
+
+    data: list[dict[str, Any]] = []
+    for sample_size in sorted(best_by_sample_size, key=lambda value: int(str(value))):
+        item = best_by_sample_size.get(sample_size)
+        if not isinstance(item, dict):
+            continue
+        metric_payload = item.get("metrics") if isinstance(item.get("metrics"), dict) else item
+        value = metric_payload.get(metric) if isinstance(metric_payload, dict) else None
+        if value is None:
+            continue
+        data.append(
+            {
+                "label": f"n={sample_size} {item.get('model', '')}".strip(),
+                "value": float(value),
+            }
+        )
+    return data
+
+
+def dataset_summary_rows(result_payload: dict[str, Any]) -> list[list[str]]:
+    dataset = result_payload.get("dataset", {})
+    protocol = result_payload.get("protocol", {})
+    if not isinstance(dataset, dict) or not isinstance(protocol, dict):
+        raise RuntimeError("Benchmark payload is missing dataset/protocol sections.")
+
+    feature_names = dataset.get("feature_names", [])
+    if isinstance(feature_names, list):
+        feature_summary = ", ".join(str(name) for name in feature_names[:6])
+        if len(feature_names) > 6:
+            feature_summary = f"{feature_summary}, ..."
+    else:
+        feature_summary = ""
+
+    return [
+        ["Dataset", str(dataset.get("name", "sklearn_diabetes"))],
+        ["Samples", str(dataset.get("n_samples", ""))],
+        ["Features", str(dataset.get("n_features", ""))],
+        ["Feature names", feature_summary],
+        [
+            "Train subset sizes",
+            ", ".join(
+                str(value)
+                for value in (
+                    protocol.get("train_subset_sizes")
+                    or protocol.get("train_sizes")
+                    or []
+                )
+            ),
+        ],
+        ["Repeats per subset", str(protocol.get("n_repeats") or protocol.get("repeats") or "")],
+        ["Test size", str(protocol.get("test_size", ""))],
+        ["Models", ", ".join(str(model) for model in protocol.get("models", []))],
+    ]
+
+
+def build_protocol_diagram() -> dict[str, Any]:
+    nodes = [
+        "Sklearn diabetes dataset",
+        "Seeded train/test split",
+        "Subset downsampling",
+        "Linear and tree regressors",
+        "MAE and R^2 aggregation",
+        "Figures, tables, and manuscript evidence",
+    ]
+    edges = [
+        {"from": nodes[0], "to": nodes[1], "label": "442 samples"},
+        {"from": nodes[1], "to": nodes[2], "label": "n=25/50/100"},
+        {"from": nodes[2], "to": nodes[3], "label": "30 repeats"},
+        {"from": nodes[3], "to": nodes[4], "label": "evaluate"},
+        {"from": nodes[4], "to": nodes[5], "label": "link back"},
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def notebook_cell_outputs(activity: dict[str, Any], notebook_cell_id: str) -> list[dict[str, Any]]:
+    cells = activity.get("notebook", {}).get("document", {}).get("cells", [])
+    if not isinstance(cells, list):
+        return []
+    for cell in cells:
+        if cell.get("id") != notebook_cell_id:
+            continue
+        outputs = cell.get("outputs")
+        return outputs if isinstance(outputs, list) else []
+    return []
+
+
+def joined_output_value(value: Any) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, list):
+        joined = "".join(str(part) for part in value).strip()
+        return joined or None
+    return None
+
+
+def notebook_output_image_data_uri(
+    activity: dict[str, Any],
+    notebook_cell_id: str,
+) -> str | None:
+    for output in notebook_cell_outputs(activity, notebook_cell_id):
+        data = output.get("data")
+        if not isinstance(data, dict):
+            continue
+        png = joined_output_value(data.get("image/png"))
+        if png:
+            return f"data:image/png;base64,{re.sub(r'\\s+', '', png)}"
+        jpeg = joined_output_value(data.get("image/jpeg"))
+        if jpeg:
+            return f"data:image/jpeg;base64,{re.sub(r'\\s+', '', jpeg)}"
+        svg = joined_output_value(data.get("image/svg+xml"))
+        if svg:
+            encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+            return f"data:image/svg+xml;base64,{encoded}"
+    return None
+
+
+def ensure_visual_benchmark_cell_source(cell_source: str) -> str:
+    if "matplotlib" in cell_source.lower() and ".show(" in cell_source.lower():
+        return cell_source
+
+    visualization_block = """
+
+# Paper-ready visual summary for the experiments pane and manuscript figure assets.
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "matplotlib"])
+    import matplotlib.pyplot as plt
+from io import StringIO
+from IPython.display import SVG, display
+
+chart_records = []
+for sample_size_label, rows in payload["results"].items():
+    for row in rows:
+        chart_records.append(
+            {
+                "sample_size_label": str(sample_size_label),
+                "model": row["model"],
+                "mae_mean": row["mae_mean"],
+                "r2_mean": row["r2_mean"],
+            }
+        )
+
+plot_df = pd.DataFrame(chart_records)
+sample_order = [str(size) for size in payload["protocol"]["train_subset_sizes"]]
+model_order = list(payload["protocol"]["models"])
+mae_pivot = (
+    plot_df.pivot(index="sample_size_label", columns="model", values="mae_mean")
+    .reindex(index=sample_order, columns=model_order)
+)
+r2_pivot = (
+    plot_df.pivot(index="sample_size_label", columns="model", values="r2_mean")
+    .reindex(index=sample_order, columns=model_order)
+)
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5.2), constrained_layout=True)
+mae_pivot.plot(kind="bar", ax=axes[0], rot=0)
+axes[0].set_title("Mean MAE by training subset size")
+axes[0].set_xlabel("Training subset size")
+axes[0].set_ylabel("Mean MAE")
+axes[0].grid(axis="y", alpha=0.25)
+
+r2_pivot.plot(kind="bar", ax=axes[1], rot=0)
+axes[1].set_title("Mean R^2 by training subset size")
+axes[1].set_xlabel("Training subset size")
+axes[1].set_ylabel("Mean R^2")
+axes[1].grid(axis="y", alpha=0.25)
+
+for axis in axes:
+    axis.legend(title="Model", fontsize=8, title_fontsize=9, frameon=False)
+
+svg_buffer = StringIO()
+fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
+display(SVG(svg_buffer.getvalue()))
+plt.close(fig)
+""".strip("\n")
+
+    match = re.search(
+        rf"(?P<indent>^[ \t]*)print\(\"{re.escape(RESULT_SENTINEL)}\" \+ json\.dumps\(payload.*$",
+        cell_source,
+        re.MULTILINE,
+    )
+    if match:
+        start = match.start()
+        return (
+            cell_source[:start].rstrip()
+            + "\n\n"
+            + visualization_block
+            + "\n\n"
+            + cell_source[start:].lstrip()
+        )
+
+    return cell_source.rstrip() + "\n\n" + visualization_block + "\n"
+
+
 OutputModelT = TypeVar("OutputModelT", bound=BaseModel)
 
 
@@ -472,6 +751,177 @@ async def run_structured_agent(
     )
     result = await Runner.run(agent, prompt, max_turns=6)
     return result.final_output_as(output_type, raise_if_incorrect_type=True)
+
+
+def section_quality_issues(section_title: str, content: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", content.strip())
+    issues: list[str] = []
+    minimum_length = SECTION_MIN_LENGTHS.get(section_title, 220)
+
+    if len(normalized) < minimum_length:
+        issues.append(f"content is shorter than {minimum_length} characters")
+
+    lower = normalized.lower()
+    for marker in PLACEHOLDER_SECTION_MARKERS:
+        if marker in lower:
+            issues.append(f"contains placeholder phrase '{marker}'")
+
+    sentences = [item.strip() for item in re.split(r"[.!?]+", normalized) if len(item.strip()) >= 20]
+    minimum_sentences = 3 if section_title == "Conclusion" else 4
+    if len(sentences) < minimum_sentences:
+        issues.append(f"contains fewer than {minimum_sentences} substantive sentences")
+
+    return issues
+
+
+def repair_requirements_for_section(section_title: str) -> list[str]:
+    common = [
+        "Return only final manuscript prose for the section.",
+        "Do not mention formatting instructions, hidden workspace context, or phrases like 'see above' or 'direct inclusion'.",
+        "Stay inside the observed benchmark evidence and avoid broader clinical claims.",
+    ]
+
+    if section_title == "Dataset and Experimental Setup":
+        return common + [
+            "State the dataset name, sample count, feature count, held-out test size, train subset sizes, repetition count, compared models, and the sandbox-backed notebook execution path.",
+            "Explain why repeated small-sample splits are used and what the setup is intended to measure.",
+        ]
+
+    if section_title == "Introduction":
+        return common + [
+            "Frame the paper as a narrow, reproducible study of small-sample model behavior rather than deployable forecasting.",
+        ]
+
+    if section_title == "Discussion":
+        return common + [
+            "Interpret the observed variance and stability patterns without overstating generality.",
+        ]
+
+    if section_title == "Conclusion":
+        return common + [
+            "Summarize the main takeaways and the limits of the benchmark in concise, publication-ready prose.",
+        ]
+
+    return common
+
+
+async def repair_section_draft(
+    *,
+    section_title: str,
+    current_content: str,
+    workspace_brief: dict[str, Any],
+    result_payload: dict[str, Any],
+    discussion_points: list[str],
+    issues: list[str],
+) -> str:
+    repaired = await run_structured_agent(
+        name=f"{slugify(section_title)}-repair",
+        instructions=(
+            "You rewrite manuscript sections that failed quality control. Produce final paper prose, "
+            "ground every concrete claim in the visible benchmark setup or results, and remove any "
+            "meta-writing or placeholder language."
+        ),
+        prompt=(
+            f"Rewrite the section '{section_title}' for '{RESEARCH_TITLE}'.\n\n"
+            f"Current draft to replace:\n{current_content}\n\n"
+            f"Known issues:\n{json_blob(issues)}\n\n"
+            f"Workspace brief:\n{json_blob(workspace_brief)}\n\n"
+            f"Benchmark payload:\n{json_blob(result_payload)}\n\n"
+            f"Discussion points:\n{json_blob(discussion_points)}\n\n"
+            f"Requirements:\n{json_blob(repair_requirements_for_section(section_title))}\n"
+        ),
+        output_type=SectionRepairOutput,
+    )
+    repaired_content = repaired.content.strip()
+    remaining_issues = section_quality_issues(section_title, repaired_content)
+    if remaining_issues:
+        raise RuntimeError(
+            f"Repaired section '{section_title}' still failed validation: {remaining_issues}"
+        )
+    return repaired_content
+
+
+async def submit_draft_section(
+    *,
+    server: MCPServerSse,
+    workspace_id: str,
+    section: dict[str, Any],
+    agent_id: str,
+    content: str,
+    rationale: str,
+    cited_keys: list[str],
+    artifact_refs: list[str],
+) -> None:
+    await call_tool_record(
+        server,
+        "claim_section",
+        {
+            "workspaceId": workspace_id,
+            "sectionId": section["id"],
+            "agentId": agent_id,
+        },
+    )
+    await call_tool_record(
+        server,
+        "update_live_section_draft",
+        {
+            "workspaceId": workspace_id,
+            "sectionId": section["id"],
+            "agentId": agent_id,
+            "content": content,
+        },
+    )
+    await call_tool_record(
+        server,
+        "submit_section_draft",
+        {
+            "workspaceId": workspace_id,
+            "sectionId": section["id"],
+            "agentId": agent_id,
+            "content": content,
+            "rationale": rationale,
+            "citedKeys": cited_keys,
+            "artifactRefs": artifact_refs,
+        },
+    )
+
+
+async def review_section_submission(
+    *,
+    server: MCPServerSse,
+    workspace_id: str,
+    section: dict[str, Any],
+    reviewer_id: str,
+    section_title: str,
+    section_text: str,
+    result_payload: dict[str, Any],
+) -> ReviewerOutput:
+    review = await run_structured_agent(
+        name="section-reviewer",
+        instructions=(
+            "You review a manuscript section for realism, grounding, and whether the "
+            "claims stay inside the observed benchmark evidence. Accept sections that "
+            "are sober and adequately supported."
+        ),
+        prompt=(
+            f"Review the section '{section_title}' for '{RESEARCH_TITLE}'.\n\n"
+            f"Section text:\n{section_text}\n\n"
+            f"Observed benchmark payload:\n{json_blob(result_payload)}\n"
+        ),
+        output_type=ReviewerOutput,
+    )
+    await call_tool_record(
+        server,
+        "submit_review_feedback",
+        {
+            "workspaceId": workspace_id,
+            "sectionId": section["id"],
+            "agentId": reviewer_id,
+            "decision": review.decision,
+            "summary": review.summary,
+        },
+    )
+    return review
 
 
 async def register_agent(
@@ -914,7 +1364,9 @@ async def main() -> None:
                 "single Python code cell that can run inside a shared notebook, keeps all "
                 "randomness seeded, installs missing dependencies if needed, and prints one "
                 f"final machine-readable line that starts with {RESULT_SENTINEL}. Also produce "
-                "a prose manuscript section describing the compared models and the small-sample protocol."
+                "a prose manuscript section describing the compared models and the small-sample "
+                "protocol. When the compared objectives or reported metrics are easier to audit "
+                "as math, include KaTeX-compatible equations in the manuscript section."
             ),
             prompt=(
                 f"Write the benchmark notebook cell for '{RESEARCH_TITLE}'.\n\n"
@@ -926,8 +1378,11 @@ async def main() -> None:
                 "- evaluate train subset sizes 25, 50, and 100\n"
                 "- repeat randomized train/test splits with fixed seeds\n"
                 "- report mae_mean, mae_std, r2_mean, and r2_std\n"
+                "- render at least one paper-ready matplotlib figure in the notebook outputs summarizing model behavior across subset sizes\n"
                 "- emit a final single-line JSON payload with dataset, protocol, results, and best_by_sample_size\n"
                 "- keep claims limited to observed benchmark behavior\n"
+                "- if the compared objectives or reported metrics are materially easier to audit as math, include one or more displayed KaTeX-compatible equations using $$...$$ or \\[...\\]\n"
+                "- keep any formula aligned with the executed code and the benchmark payload rather than introducing unrelated theory\n"
                 "Also return:\n"
                 "- a draft-surface message announcing the benchmark execution,\n"
                 "- a notebook revision summary,\n"
@@ -936,8 +1391,10 @@ async def main() -> None:
             output_type=BenchmarkPlanOutput,
         )
 
+        benchmark_cell_source = ensure_visual_benchmark_cell_source(benchmark_plan.cell_source)
         results_section = find_section(workspace_record, "Results", "draft")
         methods_section = find_section(workspace_record, "Models and Small-Sample Protocol", "draft")
+        setup_section = find_section(workspace_record, "Dataset and Experimental Setup", "draft")
         log_stage("Creating and accepting the delegated benchmark task.")
         delegated_task = await call_tool_entity(
             lead_mcp,
@@ -948,8 +1405,9 @@ async def main() -> None:
                 "toAgentId": benchmarker.agent_id,
                 "title": "Run the diabetes benchmark and draft the evidence-backed sections",
                 "summary": (
-                    "Execute the shared notebook inside the sandbox, generate a benchmark table, "
-                    "and produce manuscript-ready methods and results text grounded in the run output."
+                    "Execute the shared notebook inside the sandbox, generate manuscript visuals "
+                    "and benchmark assets, and produce manuscript-ready methods and results text "
+                    "grounded in the run output."
                 ),
                 "kind": "research",
                 "sectionId": results_section["id"],
@@ -957,6 +1415,8 @@ async def main() -> None:
                     "Executed notebook cell",
                     "Linked evidence for the Results section",
                     "Benchmark table artifact",
+                    "Notebook figure artifact",
+                    "Benchmark chart artifacts",
                     "Methods and Results section drafts",
                 ],
             },
@@ -1000,7 +1460,7 @@ async def main() -> None:
             {
                 "id": benchmark_cell_id,
                 "cell_type": "code",
-                "source": [line + "\n" for line in benchmark_plan.cell_source.rstrip().splitlines()],
+                "source": [line + "\n" for line in benchmark_cell_source.rstrip().splitlines()],
                 "metadata": {
                     "agentarxiv": {
                         "title": "Diabetes small-sample benchmark",
@@ -1061,6 +1521,7 @@ async def main() -> None:
 
         log_stage(f"Notebook execution completed: {completed_execution['id']}")
         result_payload = execution_result_payload(completed_execution, activity)
+        notebook_figure_artifact_id: str | None = None
         await call_tool_record(
             benchmarker_mcp,
             "link_evidence",
@@ -1072,6 +1533,40 @@ async def main() -> None:
                 "sectionId": results_section["id"],
             },
         )
+        manuscript_guidance_before_assets = await call_tool_record(
+            lead_mcp,
+            "inspect_workspace_manuscript",
+            {"workspaceId": workspace_id},
+        )
+        inspection_reward_signals = manuscript_guidance_before_assets.get("rewardSignals") or []
+        inspection_recommended_actions = (
+            manuscript_guidance_before_assets.get("recommendedActions") or []
+        )
+        inspection_section_guidance = manuscript_guidance_before_assets.get("sections") or []
+
+        notebook_figure_data_uri = notebook_output_image_data_uri(activity, benchmark_cell_id)
+        if notebook_figure_data_uri:
+            if len(notebook_figure_data_uri) > MAX_INLINE_FIGURE_UPLOAD_CHARS:
+                log_stage(
+                    "Notebook figure remained in the sandbox output but was too large to mirror "
+                    "through MCP, so manuscript visuals will rely on the generated chart and diagram assets."
+                )
+            else:
+                try:
+                    notebook_figure = await call_tool_record(
+                        benchmarker_mcp,
+                        "upload_manuscript_asset",
+                    {
+                        "workspaceId": workspace_id,
+                        "agentId": benchmarker.agent_id,
+                        "assetType": "figure",
+                        "title": "Sandbox benchmark visualization from notebook execution",
+                        "content": notebook_figure_data_uri,
+                    },
+                )
+                    notebook_figure_artifact_id = notebook_figure.get("id")
+                except Exception as exc:
+                    log_stage(f"Skipping notebook figure upload after MCP rejection: {exc}")
 
         benchmark_table = await call_tool_record(
             benchmarker_mcp,
@@ -1081,7 +1576,6 @@ async def main() -> None:
                 "agentId": benchmarker.agent_id,
                 "assetType": "table",
                 "title": "Small-sample diabetes benchmark summary",
-                "sectionId": results_section["id"],
                 "template": "benchmark",
                 "headers": [
                     "Sample size",
@@ -1095,6 +1589,180 @@ async def main() -> None:
             },
         )
         benchmark_artifact_id = benchmark_table.get("id")
+        mae_chart = await call_tool_record(
+            benchmarker_mcp,
+            "generate_manuscript_asset",
+            {
+                "workspaceId": workspace_id,
+                "agentId": benchmarker.agent_id,
+                "assetType": "chart",
+                "title": "Best observed MAE by training subset size",
+                "template": "benchmark_bar",
+                "chartType": "bar",
+                "data": best_by_sample_size_chart_data(result_payload, metric="mae_mean"),
+                "xLabel": "Best model at each training subset size",
+                "yLabel": "Mean MAE",
+            },
+        )
+        mae_chart_artifact_id = mae_chart.get("id")
+        r2_chart = await call_tool_record(
+            benchmarker_mcp,
+            "generate_manuscript_asset",
+            {
+                "workspaceId": workspace_id,
+                "agentId": benchmarker.agent_id,
+                "assetType": "chart",
+                "title": "Best observed R^2 by training subset size",
+                "template": "benchmark_bar",
+                "chartType": "bar",
+                "data": best_by_sample_size_chart_data(result_payload, metric="r2_mean"),
+                "xLabel": "Best model at each training subset size",
+                "yLabel": "Mean R^2",
+            },
+        )
+        r2_chart_artifact_id = r2_chart.get("id")
+        workflow_diagram_input = build_protocol_diagram()
+        workflow_diagram = await call_tool_record(
+            benchmarker_mcp,
+            "generate_manuscript_asset",
+            {
+                "workspaceId": workspace_id,
+                "agentId": benchmarker.agent_id,
+                "assetType": "diagram",
+                "title": "Sandbox benchmark workflow",
+                "template": "pipeline",
+                "nodes": workflow_diagram_input["nodes"],
+                "edges": workflow_diagram_input["edges"],
+            },
+        )
+        workflow_diagram_artifact_id = workflow_diagram.get("id")
+        setup_table = await call_tool_record(
+            benchmarker_mcp,
+            "generate_manuscript_asset",
+            {
+                "workspaceId": workspace_id,
+                "agentId": benchmarker.agent_id,
+                "assetType": "table",
+                "title": "Diabetes dataset and protocol summary",
+                "template": "dataset_summary",
+                "headers": ["Aspect", "Value"],
+                "rows": dataset_summary_rows(result_payload),
+            },
+        )
+        setup_table_artifact_id = setup_table.get("id")
+        method_artifact_ids = [
+            artifact_id
+            for artifact_id in [workflow_diagram_artifact_id, setup_table_artifact_id]
+            if artifact_id
+        ]
+        result_artifact_ids = [
+            artifact_id
+            for artifact_id in [
+                benchmark_artifact_id,
+                mae_chart_artifact_id,
+                r2_chart_artifact_id,
+                notebook_figure_artifact_id,
+            ]
+            if artifact_id
+        ]
+        asset_catalog = [
+            {
+                "id": benchmark_artifact_id,
+                "title": "Small-sample diabetes benchmark summary",
+                "type": "table",
+                "sectionTitle": "Results",
+            },
+            {
+                "id": mae_chart_artifact_id,
+                "title": "Best observed MAE by training subset size",
+                "type": "chart",
+                "sectionTitle": "Results",
+            },
+            {
+                "id": r2_chart_artifact_id,
+                "title": "Best observed R^2 by training subset size",
+                "type": "chart",
+                "sectionTitle": "Results",
+            },
+            {
+                "id": workflow_diagram_artifact_id,
+                "title": "Sandbox benchmark workflow",
+                "type": "diagram",
+                "sectionTitle": "Models and Small-Sample Protocol",
+            },
+            {
+                "id": setup_table_artifact_id,
+                "title": "Diabetes dataset and protocol summary",
+                "type": "table",
+                "sectionTitle": "Dataset and Experimental Setup",
+            },
+        ]
+        if notebook_figure_artifact_id:
+            asset_catalog.append(
+                {
+                    "id": notebook_figure_artifact_id,
+                    "title": "Sandbox benchmark visualization from notebook execution",
+                    "type": "figure",
+                    "sectionTitle": "Results",
+                }
+            )
+        asset_catalog = [asset for asset in asset_catalog if asset.get("id")]
+        asset_selection = await run_structured_agent(
+            name="manuscript-asset-selector",
+            instructions=(
+                "You are an internal manuscript optimizer. Treat the inspection report's "
+                "reward signals and recommended actions as the authoritative readiness guidance, "
+                "then decide which generated assets should actually be attached to which "
+                "sections. Prefer enough assets to raise manuscript readiness without "
+                "attaching redundant visuals."
+            ),
+            prompt=(
+                f"Optimize artifact inclusion for '{RESEARCH_TITLE}'.\n\n"
+                f"{INTERNAL_MANUSCRIPT_GUIDANCE}\n\n"
+                f"Inspection-derived reward signals:\n{json_blob(inspection_reward_signals)}\n\n"
+                f"Inspection-derived recommended actions:\n{json_blob(inspection_recommended_actions)}\n\n"
+                f"Section-level artifact guidance:\n{json_blob(inspection_section_guidance)}\n\n"
+                f"Readiness inspection before asset attachment:\n{json_blob(manuscript_guidance_before_assets)}\n\n"
+                f"Executed benchmark payload:\n{json_blob(result_payload)}\n\n"
+                f"Candidate manuscript assets:\n{json_blob(asset_catalog)}\n\n"
+                "Return section assignments for the assets that should be linked into the paper. "
+                "Prioritize the Results, Models and Small-Sample Protocol, and Dataset and Experimental Setup sections. "
+                "This paper should read like a complete research manuscript rather than a text-only benchmark memo, "
+                "so prefer linking at least one image-like Results figure when available."
+            ),
+            output_type=AssetSelectionOutput,
+        )
+        artifact_id_by_title = {
+            str(asset["title"]): str(asset["id"])
+            for asset in asset_catalog
+            if asset.get("title") and asset.get("id")
+        }
+        artifact_refs_by_section: dict[str, list[str]] = {
+            "Dataset and Experimental Setup": [],
+            "Models and Small-Sample Protocol": [],
+            "Results": [],
+        }
+        for assignment in asset_selection.section_assignments:
+            artifact_refs_by_section[assignment.section_title] = list(
+                dict.fromkeys(
+                    artifact_id_by_title[title]
+                    for title in assignment.artifact_titles
+                    if title in artifact_id_by_title
+                )
+            )
+        if not artifact_refs_by_section["Results"]:
+            artifact_refs_by_section["Results"] = result_artifact_ids
+        if not artifact_refs_by_section["Models and Small-Sample Protocol"]:
+            artifact_refs_by_section["Models and Small-Sample Protocol"] = method_artifact_ids
+        if not artifact_refs_by_section["Dataset and Experimental Setup"] and setup_table_artifact_id:
+            artifact_refs_by_section["Dataset and Experimental Setup"] = [setup_table_artifact_id]
+        selected_artifact_ids = list(
+            dict.fromkeys(
+                artifact_id
+                for refs in artifact_refs_by_section.values()
+                for artifact_id in refs
+            )
+        )
 
         log_stage("Interpreting benchmark results and drafting the remaining manuscript sections.")
         interpretation = await run_structured_agent(
@@ -1121,7 +1789,8 @@ async def main() -> None:
             instructions=(
                 "You write introduction, setup, discussion, and conclusion sections for a "
                 "benchmark paper. Stay empirical, explain the sandbox-backed workflow, and "
-                "make the limits of the benchmark explicit."
+                "make the limits of the benchmark explicit. Preserve mathematically explicit "
+                "methods sections when they are justified by the benchmark."
             ),
             prompt=(
                 f"Write the remaining draft sections for '{RESEARCH_TITLE}'.\n\n"
@@ -1131,6 +1800,28 @@ async def main() -> None:
             ),
             output_type=LeadDraftOutput,
         )
+        lead_section_content = {
+            "Introduction": lead_sections.introduction,
+            "Dataset and Experimental Setup": lead_sections.experimental_setup,
+            "Discussion": lead_sections.discussion,
+            "Conclusion": lead_sections.conclusion,
+        }
+        for section_title, content in list(lead_section_content.items()):
+            issues = section_quality_issues(section_title, content)
+            if not issues:
+                continue
+            log_stage(
+                f"Repairing '{section_title}' before submission because the generated draft looked placeholder-like."
+            )
+            lead_section_content[section_title] = await repair_section_draft(
+                section_title=section_title,
+                current_content=content,
+                workspace_brief=workspace_record["workspace"],
+                result_payload=result_payload,
+                discussion_points=interpretation.discussion_points,
+                issues=issues,
+            )
+        protocol_section_text = benchmark_plan.protocol_section
 
         log_stage("Submitting draft sections, review feedback, and publishing the paper.")
         await call_tool_record(
@@ -1162,67 +1853,70 @@ async def main() -> None:
         )
 
         draft_submissions = [
-            (
-                lead_mcp,
-                lead.agent_id,
-                "Introduction",
-                lead_sections.introduction,
-                "Frames the paper as a strict sandbox-backed benchmark of small-sample regression behavior.",
-                ["efron2004_lars", "pedregosa2011_sklearn"],
-                [],
-            ),
-            (
-                lead_mcp,
-                lead.agent_id,
-                "Dataset and Experimental Setup",
-                lead_sections.experimental_setup,
-                "Explains the dataset, repeated split protocol, and sandbox notebook workflow.",
-                ["efron2004_lars", "pedregosa2011_sklearn"],
-                [],
-            ),
-            (
-                benchmarker_mcp,
-                benchmarker.agent_id,
-                "Models and Small-Sample Protocol",
-                benchmark_plan.protocol_section,
-                "Documents the concrete model set and benchmark procedure that generated the linked notebook evidence.",
-                [
+            {
+                "server": lead_mcp,
+                "agent_id": lead.agent_id,
+                "section_title": "Introduction",
+                "content": lead_section_content["Introduction"],
+                "rationale": "Frames the paper as a strict sandbox-backed benchmark of small-sample regression behavior.",
+                "cited_keys": ["efron2004_lars", "pedregosa2011_sklearn"],
+                "artifact_refs": [],
+            },
+            {
+                "server": lead_mcp,
+                "agent_id": lead.agent_id,
+                "section_title": "Dataset and Experimental Setup",
+                "content": lead_section_content["Dataset and Experimental Setup"],
+                "rationale": "Explains the dataset, repeated split protocol, and links the setup summary asset.",
+                "cited_keys": ["efron2004_lars", "pedregosa2011_sklearn"],
+                "artifact_refs": artifact_refs_by_section["Dataset and Experimental Setup"],
+            },
+            {
+                "server": benchmarker_mcp,
+                "agent_id": benchmarker.agent_id,
+                "section_title": "Models and Small-Sample Protocol",
+                "content": protocol_section_text,
+                "rationale": "Documents the concrete model set and benchmark procedure that generated the linked notebook evidence and workflow diagram.",
+                "cited_keys": [
                     "hoerl1970_ridge",
                     "tibshirani1996_lasso",
                     "breiman1984_cart",
                     "breiman2001_rf",
                     "pedregosa2011_sklearn",
                 ],
-                [],
-            ),
-            (
-                benchmarker_mcp,
-                benchmarker.agent_id,
-                "Results",
-                interpretation.results_section,
-                "Summarizes the executed notebook outputs and links the benchmark table artifact.",
-                ["pedregosa2011_sklearn"],
-                [benchmark_artifact_id] if benchmark_artifact_id else [],
-            ),
-            (
-                lead_mcp,
-                lead.agent_id,
-                "Discussion",
-                lead_sections.discussion,
-                "Interprets the observed stability and variance patterns without extending beyond the benchmark.",
-                ["hoerl1970_ridge", "tibshirani1996_lasso", "breiman2001_rf"],
-                [],
-            ),
-            (
-                lead_mcp,
-                lead.agent_id,
-                "Conclusion",
-                lead_sections.conclusion,
-                "Closes with the benchmark-limited takeaways and next-step recommendations.",
-                [],
-                [],
-            ),
+                "artifact_refs": artifact_refs_by_section["Models and Small-Sample Protocol"],
+            },
+            {
+                "server": benchmarker_mcp,
+                "agent_id": benchmarker.agent_id,
+                "section_title": "Results",
+                "content": interpretation.results_section,
+                "rationale": "Summarizes the executed notebook outputs and links the table, chart, and notebook-figure artifacts.",
+                "cited_keys": ["pedregosa2011_sklearn"],
+                "artifact_refs": artifact_refs_by_section["Results"],
+            },
+            {
+                "server": lead_mcp,
+                "agent_id": lead.agent_id,
+                "section_title": "Discussion",
+                "content": lead_section_content["Discussion"],
+                "rationale": "Interprets the observed stability and variance patterns without extending beyond the benchmark.",
+                "cited_keys": ["hoerl1970_ridge", "tibshirani1996_lasso", "breiman2001_rf"],
+                "artifact_refs": [],
+            },
+            {
+                "server": lead_mcp,
+                "agent_id": lead.agent_id,
+                "section_title": "Conclusion",
+                "content": lead_section_content["Conclusion"],
+                "rationale": "Closes with the benchmark-limited takeaways and next-step recommendations.",
+                "cited_keys": [],
+                "artifact_refs": [],
+            },
         ]
+        draft_submission_by_title = {
+            str(item["section_title"]): item for item in draft_submissions
+        }
 
         await call_tool_record(
             lead_mcp,
@@ -1251,39 +1945,17 @@ async def main() -> None:
             {"workspaceId": workspace_id},
         )
 
-        for server, agent_id, section_title, content, rationale, cited_keys, artifact_refs in draft_submissions:
-            section = find_section(workspace_record, section_title, "draft")
-            await call_tool_record(
-                server,
-                "claim_section",
-                {
-                    "workspaceId": workspace_id,
-                    "sectionId": section["id"],
-                    "agentId": agent_id,
-                },
-            )
-            await call_tool_record(
-                server,
-                "update_live_section_draft",
-                {
-                    "workspaceId": workspace_id,
-                    "sectionId": section["id"],
-                    "agentId": agent_id,
-                    "content": content,
-                },
-            )
-            await call_tool_record(
-                server,
-                "submit_section_draft",
-                {
-                    "workspaceId": workspace_id,
-                    "sectionId": section["id"],
-                    "agentId": agent_id,
-                    "content": content,
-                    "rationale": rationale,
-                    "citedKeys": cited_keys,
-                    "artifactRefs": artifact_refs,
-                },
+        for submission in draft_submissions:
+            section = find_section(workspace_record, str(submission["section_title"]), "draft")
+            await submit_draft_section(
+                server=submission["server"],
+                workspace_id=workspace_id,
+                section=section,
+                agent_id=str(submission["agent_id"]),
+                content=str(submission["content"]),
+                rationale=str(submission["rationale"]),
+                cited_keys=list(submission["cited_keys"]),
+                artifact_refs=list(submission["artifact_refs"]),
             )
 
         await call_tool_record(
@@ -1295,9 +1967,9 @@ async def main() -> None:
                 "resultSummary": (
                     "Executed the diabetes small-sample benchmark in the shared notebook, linked "
                     "the notebook run to the Results section, and delivered manuscript-ready methods "
-                    "and results text with the benchmark table artifact."
+                    "and results text with linked figure, chart, diagram, and table artifacts."
                 ),
-                "artifactRefs": [benchmark_artifact_id] if benchmark_artifact_id else [],
+                "artifactRefs": selected_artifact_ids,
             },
         )
 
@@ -1309,36 +1981,21 @@ async def main() -> None:
             (benchmarker_mcp, benchmarker.agent_id, "Discussion"),
             (benchmarker_mcp, benchmarker.agent_id, "Conclusion"),
         ]
+        review_assignment_by_title = {
+            section_title: (server, reviewer_id)
+            for server, reviewer_id, section_title in review_plan
+        }
 
         for server, reviewer_id, section_title in review_plan:
             section = find_section(workspace_record, section_title, "draft")
-            section_text = next(
-                item[3] for item in draft_submissions if item[2] == section_title
-            )
-            review = await run_structured_agent(
-                name="section-reviewer",
-                instructions=(
-                    "You review a manuscript section for realism, grounding, and whether the "
-                    "claims stay inside the observed benchmark evidence. Accept sections that "
-                    "are sober and adequately supported."
-                ),
-                prompt=(
-                    f"Review the section '{section_title}' for '{RESEARCH_TITLE}'.\n\n"
-                    f"Section text:\n{section_text}\n\n"
-                    f"Observed benchmark payload:\n{json_blob(result_payload)}\n"
-                ),
-                output_type=ReviewerOutput,
-            )
-            await call_tool_record(
-                server,
-                "submit_review_feedback",
-                {
-                    "workspaceId": workspace_id,
-                    "sectionId": section["id"],
-                    "agentId": reviewer_id,
-                    "decision": review.decision,
-                    "summary": review.summary,
-                },
+            await review_section_submission(
+                server=server,
+                workspace_id=workspace_id,
+                section=section,
+                reviewer_id=reviewer_id,
+                section_title=section_title,
+                section_text=str(draft_submission_by_title[section_title]["content"]),
+                result_payload=result_payload,
             )
 
         manuscript_status = await call_tool_record(
@@ -1346,6 +2003,150 @@ async def main() -> None:
             "inspect_workspace_manuscript",
             {"workspaceId": workspace_id},
         )
+        requested_changes = [
+            section
+            for section in manuscript_status.get("sections", [])
+            if section.get("status") == "changes_requested"
+        ]
+        if requested_changes:
+            log_stage(
+                "Review requested changes for one or more sections; repairing them automatically before publish."
+            )
+            for section_status in requested_changes:
+                section_title = str(section_status.get("title") or "")
+                if not section_title or section_title not in draft_submission_by_title:
+                    raise RuntimeError(
+                        f"Cannot repair unknown section from manuscript status: {section_status}"
+                    )
+                submission = draft_submission_by_title[section_title]
+                repaired_content = await repair_section_draft(
+                    section_title=section_title,
+                    current_content=str(submission["content"]),
+                    workspace_brief=workspace_record["workspace"],
+                    result_payload=result_payload,
+                    discussion_points=interpretation.discussion_points,
+                    issues=[
+                        f"Platform review status: {section_status.get('status')}",
+                        *section_quality_issues(section_title, str(submission["content"])),
+                    ],
+                )
+                submission["content"] = repaired_content
+                section = find_section(workspace_record, section_title, "draft")
+                await submit_draft_section(
+                    server=submission["server"],
+                    workspace_id=workspace_id,
+                    section=section,
+                    agent_id=str(submission["agent_id"]),
+                    content=repaired_content,
+                    rationale=str(submission["rationale"]),
+                    cited_keys=list(submission["cited_keys"]),
+                    artifact_refs=list(submission["artifact_refs"]),
+                )
+                review_server, reviewer_id = review_assignment_by_title[section_title]
+                await review_section_submission(
+                    server=review_server,
+                    workspace_id=workspace_id,
+                    section=section,
+                    reviewer_id=reviewer_id,
+                    section_title=section_title,
+                    section_text=repaired_content,
+                    result_payload=result_payload,
+                )
+
+            manuscript_status = await call_tool_record(
+                lead_mcp,
+                "inspect_workspace_manuscript",
+                {"workspaceId": workspace_id},
+            )
+        if manuscript_needs_formula_revision(manuscript_status):
+            log_stage(
+                "Manuscript readiness suggested a formula pass; asking an editor agent whether "
+                "the methods section should be revised."
+            )
+            formula_revision = await run_structured_agent(
+                name="formula-readiness-editor",
+                instructions=(
+                    "You are a manuscript readiness editor. Decide whether the methods/protocol "
+                    "section should be revised to add math. Only request or make a revision "
+                    "when a formula materially improves auditability for this executed benchmark. "
+                    "Use KaTeX-compatible delimiters when revising, keep notation minimal, and "
+                    "do not add equations just to game a rubric."
+                ),
+                prompt=(
+                    f"Review the 'Models and Small-Sample Protocol' section for '{RESEARCH_TITLE}'.\n\n"
+                    f"Current section text:\n{protocol_section_text}\n\n"
+                    f"Benchmark payload:\n{json_blob(result_payload)}\n\n"
+                    f"Current manuscript readiness report:\n{json_blob(manuscript_status)}\n\n"
+                    "Return whether the section should be revised to add formulas. If yes, return "
+                    "a revised section that adds only equations that are appropriate for this "
+                    "benchmark, such as a regularized linear objective or reported evaluation "
+                    "metric. If no, explain why the current prose is already adequate."
+                ),
+                output_type=FormulaRevisionDecisionOutput,
+            )
+            if formula_revision.revise_methods and formula_revision.revised_section:
+                protocol_section_text = formula_revision.revised_section
+                draft_submission_by_title["Models and Small-Sample Protocol"]["content"] = (
+                    protocol_section_text
+                )
+                await call_tool_record(
+                    benchmarker_mcp,
+                    "submit_section_draft",
+                    {
+                        "workspaceId": workspace_id,
+                        "sectionId": methods_section["id"],
+                        "agentId": benchmarker.agent_id,
+                        "content": protocol_section_text,
+                        "rationale": formula_revision.rationale,
+                        "citedKeys": [
+                            "hoerl1970_ridge",
+                            "tibshirani1996_lasso",
+                            "breiman1984_cart",
+                            "breiman2001_rf",
+                            "pedregosa2011_sklearn",
+                        ],
+                        "artifactRefs": artifact_refs_by_section["Models and Small-Sample Protocol"],
+                    },
+                )
+                formula_review = await run_structured_agent(
+                    name="formula-section-reviewer",
+                    instructions=(
+                        "You review a benchmark methods section for mathematical clarity and grounding. "
+                        "Accept sections whose equations are relevant, correctly scoped, and tied to the executed study."
+                    ),
+                    prompt=(
+                        f"Review the revised section 'Models and Small-Sample Protocol' for '{RESEARCH_TITLE}'.\n\n"
+                        f"Section text:\n{protocol_section_text}\n\n"
+                        f"Observed benchmark payload:\n{json_blob(result_payload)}\n"
+                    ),
+                    output_type=ReviewerOutput,
+                )
+                await call_tool_record(
+                    lead_mcp,
+                    "submit_review_feedback",
+                    {
+                        "workspaceId": workspace_id,
+                        "sectionId": methods_section["id"],
+                        "agentId": lead.agent_id,
+                        "decision": formula_review.decision,
+                        "summary": formula_review.summary,
+                    },
+                )
+                manuscript_status = await call_tool_record(
+                    lead_mcp,
+                    "inspect_workspace_manuscript",
+                    {"workspaceId": workspace_id},
+                )
+
+        remaining_nonaccepted = [
+            str(section.get("title") or "")
+            for section in manuscript_status.get("sections", [])
+            if section.get("status") != "accepted"
+        ]
+        if remaining_nonaccepted:
+            raise RuntimeError(
+                f"Manuscript still has non-accepted sections before publish: {remaining_nonaccepted}"
+            )
 
         published = await call_tool_record(
             lead_mcp,
@@ -1396,6 +2197,18 @@ async def main() -> None:
                     "messageCount": len(final_messages if isinstance(final_messages, list) else []),
                     "notebookRevision": final_activity.get("notebook", {}).get("currentRevision"),
                     "artifactId": benchmark_artifact_id,
+                    "artifactIds": {
+                        "benchmarkTable": benchmark_artifact_id,
+                        "bestMaeChart": mae_chart_artifact_id,
+                        "bestR2Chart": r2_chart_artifact_id,
+                        "workflowDiagram": workflow_diagram_artifact_id,
+                        "setupTable": setup_table_artifact_id,
+                        "notebookFigure": notebook_figure_artifact_id,
+                    },
+                    "artifactSelection": {
+                        "bySection": artifact_refs_by_section,
+                        "selectedArtifactIds": selected_artifact_ids,
+                    },
                     "manuscriptStatus": manuscript_status,
                     "runStatus": run_status,
                     "resultPayload": result_payload,

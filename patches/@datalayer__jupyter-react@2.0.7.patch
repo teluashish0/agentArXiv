@@ -10,17 +10,9 @@ index 6a3aeaf9d7ef51d3365a6b05ca95f67ef8582364..e18d6b24569415346b610676f19053a8
 +import { WidgetManager } from '../../jupyter/ipywidgets/lab/manager.js';
 +import { WidgetLabRenderer } from '../../jupyter/ipywidgets/lab/renderer.js';
 +import { WIDGET_MIMETYPE } from '../../jupyter/ipywidgets/classic/output_renderers.js';
-import { newUuid, remoteUserCursors } from '../../utils/index.js';
-import { Lumino } from '../lumino/index.js';
-import { Loader } from '../utils/index.js';
-@@ -206,6 +208,7 @@
-            mimeTypeService: features.editorServices.mimeTypeService,
-            notebookConfig: {
-                ...StaticNotebook.defaultNotebookConfig,
-+                windowingMode: 'none',
-                recordTiming: true,
-            },
-        });
+ import { newUuid, remoteUserCursors } from '../../utils/index.js';
+ import { Lumino } from '../lumino/index.js';
+ import { Loader } from '../utils/index.js';
 diff --git a/lib/jupyter/ipywidgets/libembed.js b/lib/jupyter/ipywidgets/libembed.js
 index fbe2c9321bdd48fdaa1bb9e09ddc201da834b3e6..315b290406969eeae9915f99e4925fca5e32b356 100644
 --- a/lib/jupyter/ipywidgets/libembed.js

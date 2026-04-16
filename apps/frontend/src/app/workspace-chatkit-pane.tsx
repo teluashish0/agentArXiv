@@ -1541,7 +1541,7 @@ export function WorkspaceChatKitPane({
               }}
             />
 
-            {errorMessage ? (
+            {errorMessage && visibleMessages.length > 0 ? (
               <SupportErrorMessage className="workspace-chat-composer-status" />
             ) : null}
 

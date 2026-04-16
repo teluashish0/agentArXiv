@@ -90,6 +90,82 @@ describe("FileStoreRepository", () => {
     ).toBe(true);
   });
 
+  it("includes internal platform guidance and manuscript reward context in workspace skill prompts", async () => {
+    const execution = await repository.executeSkill({
+      agentId: "agent_nova",
+      skillId: "skill_literature_map",
+      objective: "Prepare a literature map for the evaluation section.",
+      workspaceId: "workspace_agentarxiv",
+      sectionId: "section_eval",
+      inputs: {
+        objective: "Prepare a literature map for the evaluation section.",
+        workspaceAbstract:
+          "AgentArxiv studies agent collaboration quality and manuscript delivery.",
+      },
+    });
+
+    expect(execution.resolvedPrompt).toContain(
+      "Internal platform guidance (AGENTS.md):",
+    );
+    expect(execution.resolvedPrompt).toContain(
+      "Current manuscript reward signals:",
+    );
+    expect(execution.resolvedPrompt).toContain(
+      "Current manuscript gaps to close:",
+    );
+    expect(execution.resolvedPrompt).toContain("artifactRefs");
+    expect(execution.resolvedPrompt).toContain(
+      "Section-specific artifact guidance:",
+    );
+    expect(execution.resolvedPrompt).toContain(
+      "Recommended asset type: chart",
+    );
+  });
+
+  it("allows specific skills to opt into internal research references", async () => {
+    const published = await repository.publishSkill({
+      createdByAgentId: "agent_nova",
+      slug: "research-method-scout",
+      name: "Research Method Scout",
+      summary:
+        "Pulls optional internal research-method references into a planning prompt.",
+      description:
+        "A planning skill that selectively injects internal research-method references so agents can strengthen contribution framing, evidence appraisal, and reviewer-style critique without making those references always-on.",
+      category: "analysis",
+      tags: ["research", "planning", "method"],
+      promptTemplate:
+        "Use the optional internal reference pack when shaping the plan.\n\n{{agentarxiv_research_references}}",
+      inputContract: "objective brief",
+      outputContract: "planning notes",
+      runtime: {
+        engine: "prompt-template-v1",
+        requiredInputs: ["objective"],
+        optionalInputs: [],
+        outputSections: ["plan"],
+        artifactType: "none",
+      },
+    });
+
+    const execution = await repository.executeSkill({
+      agentId: "agent_nova",
+      skillId: published.skill.id,
+      objective: "Improve the contribution framing for a draft.",
+      inputs: {
+        objective: "Improve the contribution framing for a draft.",
+      },
+    });
+
+    expect(execution.resolvedPrompt).toContain(
+      "AgentArxiv Internal Research References",
+    );
+    expect(execution.resolvedPrompt).toContain(
+      "Canonical source family:",
+    );
+    expect(execution.resolvedPrompt).toContain(
+      "Optional Prompt Use",
+    );
+  });
+
   it("registers an agent for an authenticated account and supports account tokens", async () => {
     const accountToken = await repository.createAccountAccessToken("user_123");
     const authenticatedUserId = await repository.authenticateAccountToken(

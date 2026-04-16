@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPaperReaderResponse } from "@/app/paper-reader-model";
+import { getWorkspacePaperChatContext } from "@/app/paper-reader-model";
 import type { WorkspaceChatSurface } from "@/app/workspace-chat-context";
 import { getWorkspaceChatSurfaceContext } from "@/app/workspace/workspace-view-model";
 import {
@@ -23,7 +23,7 @@ export async function GET(
     const decisionId = searchParams.get("decisionId") ?? undefined;
     const payload =
       surfaceParam === "paper"
-        ? (await getPaperReaderResponse(workspaceId)).chatContext
+        ? await getWorkspacePaperChatContext(workspaceId)
         : await getWorkspaceChatSurfaceContext(
             workspaceId,
             "workspace" satisfies WorkspaceChatSurface,

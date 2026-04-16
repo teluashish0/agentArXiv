@@ -56,6 +56,13 @@ DEFAULT_MODEL = "gpt-5.4-mini"
 DEFAULT_CHATKIT_SHARED_SECRET = "agentarxiv-local-chatkit-secret"
 CHATKIT_SHARED_SECRET_HEADER = "x-agentarxiv-chatkit-secret"
 PAPER_CHAT_THREAD_SCOPE_HEADER = "x-agentarxiv-paper-thread-scope"
+DEFAULT_INTERNAL_AGENT_GUIDANCE = "\n".join(
+  [
+    "Prefer novelty, evidence, and manuscript quality over speed.",
+    "Use multi-pass research loops instead of one-shot answers.",
+    "Turn visuals, tables, equations, and linked evidence into section-level value when they sharpen the paper.",
+  ]
+)
 MAX_THREAD_ITEMS = 400
 MAX_MESSAGE_ATTACHMENTS = 5
 MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
@@ -129,12 +136,30 @@ TEXT_ATTACHMENT_SUFFIXES = {
   ".yml",
 }
 
+_internal_agent_guidance_cache: str | None = None
+
+
+def load_internal_agent_guidance() -> str:
+  global _internal_agent_guidance_cache
+
+  if _internal_agent_guidance_cache is not None:
+    return _internal_agent_guidance_cache
+
+  try:
+    guidance = (ROOT_DIR / "AGENTS.md").read_text(encoding="utf-8").strip()
+  except OSError:
+    guidance = ""
+
+  _internal_agent_guidance_cache = guidance or DEFAULT_INTERNAL_AGENT_GUIDANCE
+  return _internal_agent_guidance_cache
+
 
 class RequestContext(BaseModel):
   workspace_id: str
   surface: str
   decision_id: str | None = None
   paper_thread_scope: str | None = None
+  paper_context_source: str = "workspace"
 
 
 class SelectionPayload(BaseModel):
@@ -245,12 +270,14 @@ def build_request_context(
   surface: str,
   request: Request,
   decision_id: str | None = None,
+  paper_context_source: str = "workspace",
 ) -> RequestContext:
   return RequestContext(
     workspace_id=workspace_id,
     surface=surface,
     decision_id=decision_id,
     paper_thread_scope=resolve_paper_thread_scope(request) if surface == "paper" else None,
+    paper_context_source=paper_context_source,
   )
 
 
@@ -1876,6 +1903,9 @@ class WorkspaceChatKitServer(ChatKitServer[RequestContext]):
         "Prefer concise, collaborative guidance that helps the next agent decide what to revise, cite, or question.",
         "Do not default to operational progress updates like 'I am working on this section' unless timing itself is the point.",
         "Do not pretend to know facts outside the visible manuscript context unless the thread already provides them.",
+        "",
+        "Internal platform guidance (AGENTS.md):",
+        load_internal_agent_guidance(),
       ]
     )
 
@@ -1934,7 +1964,10 @@ class PaperChatKitServer(WorkspaceChatKitServer):
     return "Paper"
 
   def _attachment_api_path(self, context: RequestContext, attachment_id: str) -> str:
-    return f"/api/chatkit/papers/{context.workspace_id}/attachments/{attachment_id}"
+    if context.paper_context_source == "paper":
+      return f"/api/chatkit/papers/{context.workspace_id}/attachments/{attachment_id}"
+
+    return f"/api/chatkit/workspaces/{context.workspace_id}/paper/attachments/{attachment_id}"
 
   async def _fetch_surface_context(self, context: RequestContext) -> SurfaceThreadPayload:
     async with httpx.AsyncClient(timeout=15) as client:
@@ -1943,10 +1976,18 @@ class PaperChatKitServer(WorkspaceChatKitServer):
       if context.paper_thread_scope:
         headers[PAPER_CHAT_THREAD_SCOPE_HEADER] = context.paper_thread_scope
 
-      response = await client.get(
-        f"{self.context_api_base_url}/api/papers/{context.workspace_id}/chat-context",
-        headers=headers,
-      )
+      if context.paper_context_source == "paper":
+        response = await client.get(
+          f"{self.context_api_base_url}/api/papers/{context.workspace_id}/chat-context",
+          headers=headers,
+        )
+      else:
+        response = await client.get(
+          f"{self.context_api_base_url}/api/workspaces/{context.workspace_id}/chat-context",
+          params={"surface": "paper"},
+          headers=headers,
+        )
+
       response.raise_for_status()
       return SurfaceThreadPayload.model_validate(response.json())
 
@@ -2194,7 +2235,7 @@ async def ensure_paper_thread(paper_id: str, request: Request):
   require_trusted_workspace_request(request)
 
   thread = await paper_chatkit_server.ensure_workspace_thread(
-    build_request_context(paper_id, "paper", request),
+    build_request_context(paper_id, "paper", request, paper_context_source="paper"),
   )
 
   return {
@@ -2273,7 +2314,7 @@ async def list_paper_messages(paper_id: str, request: Request):
   require_trusted_workspace_request(request)
 
   thread, messages = await paper_chatkit_server.list_workspace_messages(
-    build_request_context(paper_id, "paper", request),
+    build_request_context(paper_id, "paper", request, paper_context_source="paper"),
   )
 
   return {
@@ -2336,7 +2377,7 @@ async def get_paper_attachment(paper_id: str, attachment_id: str, request: Reque
 
   try:
     attachment, blob_bytes = await paper_chatkit_server.load_workspace_attachment(
-      build_request_context(paper_id, "paper", request),
+      build_request_context(paper_id, "paper", request, paper_context_source="paper"),
       attachment_id,
     )
   except NotFoundError as exc:
@@ -2403,12 +2444,12 @@ async def post_paper_message(paper_id: str, request: Request):
 
   payload, uploads = await parse_workspace_message_request(request)
   await paper_chatkit_server.post_workspace_message(
-    build_request_context(paper_id, "paper", request),
+    build_request_context(paper_id, "paper", request, paper_context_source="paper"),
     payload,
     uploads=uploads,
   )
   thread, messages = await paper_chatkit_server.list_workspace_messages(
-    build_request_context(paper_id, "paper", request),
+    build_request_context(paper_id, "paper", request, paper_context_source="paper"),
   )
 
   return {

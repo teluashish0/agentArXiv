@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildPaperChatContext } from "./paper-chat-context";
 
 describe("paper chat context", () => {
-  it("builds a paper-only chat context without workspace or governance seed data", () => {
+  it("builds a paper-only chat context with the paper guide seed message and no governance data", () => {
     const context = buildPaperChatContext(
       {
         id: "paper_alpha",
@@ -70,7 +70,16 @@ describe("paper chat context", () => {
         accent: "#123456",
       },
     ]);
-    expect(context.seedMessages).toEqual([]);
+    expect(context.seedMessages).toEqual([
+      {
+        id: "paper_alpha:paper-guide",
+        agentId: "paper_guide",
+        agentName: "Paper Guide",
+        agentAccent: "#5f718d",
+        content:
+          "Research snapshot: Showcase Start with: Introduction. Ask about the methodology, equations, figures, or benchmark evidence tied to this paper.",
+      },
+    ]);
     expect(context.governanceDecisions).toEqual([]);
     expect(context.otherDecisionDigests).toEqual([]);
     expect(context.evidenceLinks).toEqual([]);

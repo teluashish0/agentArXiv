@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ZoomIn, ZoomOut } from "lucide-react";
+import { normalizeManuscriptTextForDisplay } from "./manuscript-display";
+import {
+  estimateManuscriptParagraphLineCount,
+  ManuscriptRichText,
+} from "./manuscript-math";
 import { workspacePaperTemplates } from "./workspace-paper-data";
 import type {
   WorkspaceAgent,
@@ -52,6 +57,8 @@ type RenderedPaperAsset =
       type: "figure" | "diagram" | "chart";
       kind: "image";
       src: string;
+      captionLabel: "Figure";
+      captionNumber: number;
     }
   | {
       id: string;
@@ -60,6 +67,8 @@ type RenderedPaperAsset =
       kind: "table";
       headers: string[];
       rows: string[][];
+      captionLabel: "Table";
+      captionNumber: number;
     }
   | {
       id: string;
@@ -67,6 +76,8 @@ type RenderedPaperAsset =
       type: string;
       kind: "text";
       text: string;
+      captionLabel: "Figure";
+      captionNumber: number;
     };
 
 export type RenderedLatexDocument = {
@@ -511,7 +522,52 @@ function parseMarkdownTable(content: string) {
   };
 }
 
-function renderAssetFromDocument(asset: WorkspaceLatexDocumentAsset): RenderedPaperAsset {
+function isNumericTableCell(value: string) {
+  const normalizedValue = value
+    .replace(/\u2212/g, "-")
+    .replace(/[%,$]/g, "")
+    .replace(/,/g, "")
+    .trim();
+
+  return /^[-+]?(\d+(\.\d+)?|\.\d+)$/.test(normalizedValue);
+}
+
+function getNumericColumnFlags(headers: string[], rows: string[][]) {
+  return headers.map((_, columnIndex) => {
+    const columnValues = rows
+      .map((row) => row[columnIndex] ?? "")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    return columnValues.length > 0 && columnValues.every(isNumericTableCell);
+  });
+}
+
+type UncaptionedRenderedPaperAsset =
+  | {
+      id: string;
+      title: string;
+      type: "figure" | "diagram" | "chart";
+      kind: "image";
+      src: string;
+    }
+  | {
+      id: string;
+      title: string;
+      type: "table";
+      kind: "table";
+      headers: string[];
+      rows: string[][];
+    }
+  | {
+      id: string;
+      title: string;
+      type: string;
+      kind: "text";
+      text: string;
+    };
+
+function renderAssetFromDocument(asset: WorkspaceLatexDocumentAsset): UncaptionedRenderedPaperAsset {
   if (
     (asset.type === "figure" || asset.type === "diagram" || asset.type === "chart") &&
     asset.content.trim()
@@ -547,6 +603,35 @@ function renderAssetFromDocument(asset: WorkspaceLatexDocumentAsset): RenderedPa
     kind: "text",
     text: asset.content.trim(),
   };
+}
+
+function addCaptionMetadataToAssets(
+  assets: WorkspaceLatexDocumentAsset[] | undefined,
+): RenderedPaperAsset[] {
+  let figureCount = 0;
+  let tableCount = 0;
+
+  return (assets ?? []).map((asset) => {
+    const renderedAsset = renderAssetFromDocument(asset);
+
+    if (renderedAsset.kind === "table") {
+      tableCount += 1;
+
+      return {
+        ...renderedAsset,
+        captionLabel: "Table",
+        captionNumber: tableCount,
+      };
+    }
+
+    figureCount += 1;
+
+    return {
+      ...renderedAsset,
+      captionLabel: "Figure",
+      captionNumber: figureCount,
+    };
+  });
 }
 
 function orderSections(document: WorkspaceLatexDocument) {
@@ -734,7 +819,10 @@ function estimateParagraphContentHeightInches(
   paragraph: string,
   metrics: PaginationMetrics,
 ) {
-  const lineCount = estimateLineCount(paragraph, metrics.paragraphCharsPerLine);
+  const lineCount = estimateManuscriptParagraphLineCount(
+    paragraph,
+    metrics.paragraphCharsPerLine,
+  );
 
   return lineCount * metrics.paragraphLineHeightIn;
 }
@@ -985,6 +1073,9 @@ export function buildRenderedLatexDocument(
   const carets: RenderedLatexCaret[] = [];
   const sourceLines = [...document.preambleLines];
   const orderedSections = orderSections(document);
+  const normalizedAbstractText = document.abstractText?.trim()
+    ? normalizeManuscriptTextForDisplay(document.abstractText, "Abstract")
+    : undefined;
   const renderEntries =
     orderedSections.length > 0
       ? orderedSections.map((section) => ({
@@ -1002,9 +1093,9 @@ export function buildRenderedLatexDocument(
           section: undefined,
         }));
 
-  if (document.abstractText) {
+  if (normalizedAbstractText) {
     sourceLines.push("\\begin{abstract}");
-    sourceLines.push(document.abstractText);
+    sourceLines.push(normalizedAbstractText);
     sourceLines.push("\\end{abstract}");
     sourceLines.push("");
   }
@@ -1030,9 +1121,10 @@ export function buildRenderedLatexDocument(
       stepEvery: 2,
     };
     const agent = resolvedSection.agentId ? agentById.get(resolvedSection.agentId) : undefined;
-    const { text, isTyping } = getVisibleText(document, resolvedSection.id, simulationTick);
+    const { text: rawText, isTyping } = getVisibleText(document, resolvedSection.id, simulationTick);
+    const text = normalizeManuscriptTextForDisplay(rawText, resolvedSection.title);
     const paragraphs = splitParagraphs(text);
-    const assets = (resolvedSection.assets ?? []).map((asset) => renderAssetFromDocument(asset));
+    const assets = addCaptionMetadataToAssets(resolvedSection.assets);
     const contentLines = text.length > 0 ? text.split("\n") : [""];
     const headingLine = sourceLines.length + 1;
     const finalLineIndex = Math.max(0, contentLines.length - 1);
@@ -1098,7 +1190,7 @@ export function buildRenderedLatexDocument(
     template,
     document.paperTitle,
     document.authors,
-    document.abstractText,
+    normalizedAbstractText,
     document.keywords,
     layoutMode,
   );
@@ -1122,7 +1214,7 @@ export function buildRenderedLatexDocument(
     title: document.title,
     paperTitle: document.paperTitle,
     authors: document.authors,
-    abstractText: document.abstractText,
+    abstractText: normalizedAbstractText,
     keywords: document.keywords,
     references: document.references,
     layoutMode,
@@ -1286,9 +1378,17 @@ export function WorkspaceLatexSurface({
     const isActiveParagraph = Boolean(section.caret) && section.activeParagraphIndex === paragraphIndex;
 
     if (!isActiveParagraph || !section.caret) {
-      return paragraph || <span className="workspace-paper-empty-text">&nbsp;</span>;
+      return paragraph ? (
+        <ManuscriptRichText text={paragraph} />
+      ) : (
+        <span className="workspace-paper-empty-text">&nbsp;</span>
+      );
     }
-    const content = paragraph || <span className="workspace-paper-empty-text">&nbsp;</span>;
+    const content = paragraph ? (
+      <ManuscriptRichText text={paragraph} />
+    ) : (
+      <span className="workspace-paper-empty-text">&nbsp;</span>
+    );
 
     return (
       <>
@@ -1318,10 +1418,8 @@ export function WorkspaceLatexSurface({
   const renderSectionAsset = (
     section: RenderedPaperSection,
     asset: RenderedPaperAsset,
-    assetIndex: number,
   ) => {
-    const labelPrefix = asset.kind === "table" ? "Table" : "Figure";
-    const label = `${labelPrefix} ${section.sectionNumber}.${assetIndex + 1}`;
+    const label = `${asset.captionLabel} ${section.sectionNumber}.${asset.captionNumber}`;
 
     if (asset.kind === "image") {
       return (
@@ -1340,6 +1438,8 @@ export function WorkspaceLatexSurface({
     }
 
     if (asset.kind === "table") {
+      const numericColumnFlags = getNumericColumnFlags(asset.headers, asset.rows);
+
       return (
         <div className="workspace-paper-table-block" key={asset.id}>
           <p className="workspace-paper-asset-caption">
@@ -1349,7 +1449,11 @@ export function WorkspaceLatexSurface({
             <thead>
               <tr>
                 {asset.headers.map((header, headerIndex) => (
-                  <th key={`${asset.id}-header-${headerIndex}`} scope="col">
+                  <th
+                    className={numericColumnFlags[headerIndex] ? "is-numeric" : undefined}
+                    key={`${asset.id}-header-${headerIndex}`}
+                    scope="col"
+                  >
                     {header}
                   </th>
                 ))}
@@ -1359,7 +1463,10 @@ export function WorkspaceLatexSurface({
               {asset.rows.map((row, rowIndex) => (
                 <tr key={`${asset.id}-row-${rowIndex}`}>
                   {asset.headers.map((_, cellIndex) => (
-                    <td key={`${asset.id}-cell-${rowIndex}-${cellIndex}`}>
+                    <td
+                      className={numericColumnFlags[cellIndex] ? "is-numeric" : undefined}
+                      key={`${asset.id}-cell-${rowIndex}-${cellIndex}`}
+                    >
                       {row[cellIndex] ?? ""}
                     </td>
                   ))}
@@ -1506,12 +1613,16 @@ export function WorkspaceLatexSurface({
                       <p className="workspace-paper-abstract workspace-paper-abstract-inline">
                         <strong>Abstract</strong>
                         <span>&mdash;</span>
-                        <span>{renderedDocument.abstractText}</span>
+                        <span>
+                          <ManuscriptRichText text={renderedDocument.abstractText} />
+                        </span>
                       </p>
                     ) : (
                       <div className="workspace-paper-abstract">
                         <h2>Abstract</h2>
-                        <p>{renderedDocument.abstractText}</p>
+                        <p>
+                          <ManuscriptRichText text={renderedDocument.abstractText} />
+                        </p>
                       </div>
                     )}
 
@@ -1563,9 +1674,7 @@ export function WorkspaceLatexSurface({
                         );
                       })}
 
-                      {section.assets.map((asset, assetIndex) =>
-                        renderSectionAsset(section, asset, assetIndex),
-                      )}
+                      {section.assets.map((asset) => renderSectionAsset(section, asset))}
                     </section>
                   ))}
 

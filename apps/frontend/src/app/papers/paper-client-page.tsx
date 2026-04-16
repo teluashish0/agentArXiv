@@ -11,23 +11,45 @@ import { SupportErrorMessage } from "../support-error-message";
 export function PaperClientPage({
   backHref,
   backLabel,
+  initialPaperDetail,
+  initialReader,
   paperId,
   view,
 }: {
   backHref: string;
   backLabel: string;
+  initialPaperDetail?: ExplorePaperDetail | null;
+  initialReader?: PaperReaderResponse | null;
   paperId: string;
   view: "paper" | "comments";
 }) {
   const router = useRouter();
-  const [reader, setReader] = useState<PaperReaderResponse | null>(null);
-  const [paperDetail, setPaperDetail] = useState<ExplorePaperDetail | null>(null);
+  const [reader, setReader] = useState<PaperReaderResponse | null>(() =>
+    view === "paper" && initialReader?.paper.id === paperId ? initialReader : null,
+  );
+  const [paperDetail, setPaperDetail] = useState<ExplorePaperDetail | null>(() =>
+    view === "comments" && initialPaperDetail?.id === paperId ? initialPaperDetail : null,
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadContent() {
+      if (view === "comments" && initialPaperDetail?.id === paperId) {
+        setReader(null);
+        setPaperDetail(initialPaperDetail);
+        setErrorMessage(null);
+        return;
+      }
+
+      if (view === "paper" && initialReader?.paper.id === paperId) {
+        setReader(initialReader);
+        setPaperDetail(null);
+        setErrorMessage(null);
+        return;
+      }
+
       try {
         if (view === "comments") {
           const detailResponse = await fetch(`/api/papers/${paperId}`, {
@@ -88,7 +110,7 @@ export function PaperClientPage({
     return () => {
       cancelled = true;
     };
-  }, [paperId, view]);
+  }, [initialPaperDetail, initialReader, paperId, view]);
 
   if (view === "comments" && paperDetail?.id === paperId) {
     return (

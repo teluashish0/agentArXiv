@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ExplorePaperWorkspacePreview } from "./paper-view-model";
+import { ManuscriptRichText } from "./manuscript-math";
 import { buildRenderedLatexDocument } from "./workspace-latex-surface";
 import { workspacePaperTemplates } from "./workspace-paper-data";
 
@@ -87,29 +88,56 @@ function getPaperPreviewStyle(
   } as CSSProperties;
 }
 
-function renderPreviewAsset(asset: RenderedPreviewAsset, index: number) {
-  if (asset.kind === "image") {
-    const label =
-      asset.type === "diagram" ? "Diagram" : asset.type === "chart" ? "Chart" : "Figure";
+function renderPreviewAsset(
+  asset: RenderedPreviewAsset,
+  sectionNumber: number,
+  index: number,
+) {
+  const label = `${asset.captionLabel} ${sectionNumber}.${asset.captionNumber}`;
 
+  if (asset.kind === "image") {
     return (
       <figure className="workspace-paper-figure" key={`${asset.id}-${index}`}>
         <img alt={asset.title} className="workspace-paper-figure-image" src={asset.src} />
         <figcaption className="workspace-paper-asset-caption">
-          {label}: {asset.title}
+          <strong>{label}.</strong> {asset.title}
         </figcaption>
       </figure>
     );
   }
 
   if (asset.kind === "table") {
+    const numericColumnFlags = asset.headers.map((_, columnIndex) => {
+      const columnValues = asset.rows
+        .map((row) => row[columnIndex] ?? "")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      return (
+        columnValues.length > 0 &&
+        columnValues.every((value) =>
+          /^[-+]?(\d+(\.\d+)?|\.\d+)$/.test(
+            value.replace(/\u2212/g, "-").replace(/[%,$]/g, "").replace(/,/g, "").trim(),
+          ),
+        )
+      );
+    });
+
     return (
       <div className="workspace-paper-table-block" key={`${asset.id}-${index}`}>
+        <p className="workspace-paper-asset-caption">
+          <strong>{label}.</strong> {asset.title}
+        </p>
         <table className="workspace-paper-table">
           <thead>
             <tr>
-              {asset.headers.map((header) => (
-                <th key={`${asset.id}-${header}`}>{header}</th>
+              {asset.headers.map((header, headerIndex) => (
+                <th
+                  className={numericColumnFlags[headerIndex] ? "is-numeric" : undefined}
+                  key={`${asset.id}-${header}`}
+                >
+                  {header}
+                </th>
               ))}
             </tr>
           </thead>
@@ -117,13 +145,17 @@ function renderPreviewAsset(asset: RenderedPreviewAsset, index: number) {
             {asset.rows.map((row, rowIndex) => (
               <tr key={`${asset.id}-row-${rowIndex}`}>
                 {row.map((cell, cellIndex) => (
-                  <td key={`${asset.id}-row-${rowIndex}-cell-${cellIndex}`}>{cell}</td>
+                  <td
+                    className={numericColumnFlags[cellIndex] ? "is-numeric" : undefined}
+                    key={`${asset.id}-row-${rowIndex}-cell-${cellIndex}`}
+                  >
+                    {cell}
+                  </td>
                 ))}
               </tr>
             ))}
           </tbody>
         </table>
-        <p className="workspace-paper-asset-caption">Table: {asset.title}</p>
       </div>
     );
   }
@@ -131,7 +163,9 @@ function renderPreviewAsset(asset: RenderedPreviewAsset, index: number) {
   return (
     <div className="workspace-paper-text-asset" key={`${asset.id}-${index}`}>
       <pre>{asset.text}</pre>
-      <p className="workspace-paper-asset-caption">{asset.title}</p>
+      <p className="workspace-paper-asset-caption">
+        <strong>{label}.</strong> {asset.title}
+      </p>
     </div>
   );
 }
@@ -237,12 +271,16 @@ export function WorkspacePaperPreview({
                 <p className="workspace-paper-abstract workspace-paper-abstract-inline">
                   <strong>Abstract</strong>
                   <span>&mdash;</span>
-                  <span>{renderedDocument.abstractText}</span>
+                  <span>
+                    <ManuscriptRichText text={renderedDocument.abstractText} />
+                  </span>
                 </p>
               ) : (
                 <div className="workspace-paper-abstract">
                   <h2>Abstract</h2>
-                  <p>{renderedDocument.abstractText}</p>
+                  <p>
+                    <ManuscriptRichText text={renderedDocument.abstractText} />
+                  </p>
                 </div>
               )}
 
@@ -285,11 +323,13 @@ export function WorkspacePaperPreview({
 
                 {section.paragraphs.map((paragraph, paragraphIndex) => (
                   <p className="workspace-paper-paragraph" key={`${section.id}-${paragraphIndex}`}>
-                    {paragraph}
+                    <ManuscriptRichText text={paragraph} />
                   </p>
                 ))}
 
-                {section.assets.map((asset, assetIndex) => renderPreviewAsset(asset, assetIndex))}
+                {section.assets.map((asset, assetIndex) =>
+                  renderPreviewAsset(asset, section.sectionNumber, assetIndex),
+                )}
               </section>
             ))}
 
