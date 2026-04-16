@@ -1,0 +1,24 @@
+{
+  "name": "@agentarxiv/artifacts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "format": "prettier --check \"src/**/*.{ts,json}\""
+  },
+  "dependencies": {
+    "@terrastruct/d2": "^0.1.33",
+    "vega": "^6.2.0",
+    "vega-lite": "^6.4.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  }
+}

@@ -1,0 +1,71 @@
+diff --git a/lib/components/notebook/NotebookBase.js b/lib/components/notebook/NotebookBase.js
+index 6a3aeaf9d7ef51d3365a6b05ca95f67ef8582364..e18d6b24569415346b610676f19053a8d088e845 100644
+--- a/lib/components/notebook/NotebookBase.js
++++ b/lib/components/notebook/NotebookBase.js
+@@ -25,7 +25,9 @@ import { Widget } from '@lumino/widgets';
+ import { Box } from '@datalayer/primer-addons';
+ import { Banner } from '@primer/react/experimental';
+ import { EditorView } from 'codemirror';
+-import { WIDGET_MIMETYPE, WidgetLabRenderer, WidgetManager, } from '../../jupyter/index.js';
++import { WidgetManager } from '../../jupyter/ipywidgets/lab/manager.js';
++import { WidgetLabRenderer } from '../../jupyter/ipywidgets/lab/renderer.js';
++import { WIDGET_MIMETYPE } from '../../jupyter/ipywidgets/classic/output_renderers.js';
+import { newUuid, remoteUserCursors } from '../../utils/index.js';
+import { Lumino } from '../lumino/index.js';
+import { Loader } from '../utils/index.js';
+@@ -206,6 +208,7 @@
+            mimeTypeService: features.editorServices.mimeTypeService,
+            notebookConfig: {
+                ...StaticNotebook.defaultNotebookConfig,
++                windowingMode: 'none',
+                recordTiming: true,
+            },
+        });
+diff --git a/lib/jupyter/ipywidgets/libembed.js b/lib/jupyter/ipywidgets/libembed.js
+index fbe2c9321bdd48fdaa1bb9e09ddc201da834b3e6..315b290406969eeae9915f99e4925fca5e32b356 100644
+--- a/lib/jupyter/ipywidgets/libembed.js
++++ b/lib/jupyter/ipywidgets/libembed.js
+@@ -3,8 +3,11 @@
+  *
+  * MIT License
+  */
+-__webpack_public_path__ =
+-    window.__jupyter_widgets_assets_path__ || __webpack_public_path__;
++const currentWebpackPublicPath = typeof globalThis.__webpack_public_path__ === 'string'
++    ? globalThis.__webpack_public_path__
++    : '';
++globalThis.__webpack_public_path__ =
++    window.__jupyter_widgets_assets_path__ || currentWebpackPublicPath;
+ /*
+ import '@fortawesome/fontawesome-free/css/all.min.css';
+ import '@fortawesome/fontawesome-free/css/v4-shims.min.css';
+diff --git a/lib/theme/JupyterReactTheme.js b/lib/theme/JupyterReactTheme.js
+index 5a5705e61c61e3429f66b7815903b7cafd1df8e6..45fe801f3d0982fd4c7f75f459f9241ebda317f0 100644
+--- a/lib/theme/JupyterReactTheme.js
++++ b/lib/theme/JupyterReactTheme.js
+@@ -8,7 +8,7 @@ import { createContext, useContext, useEffect, useRef, useState, } from 'react';
+ import { BaseStyles, ThemeProvider } from '@primer/react';
+ import { setupPrimerPortals } from '@datalayer/primer-addons';
+ import { JupyterLabCss, jupyterLabTheme } from '../theme/index.js';
+-import { loadJupyterConfig } from '../jupyter/index.js';
++import { loadJupyterConfig } from '../jupyter/JupyterConfig.js';
+ import { useJupyterReactStore } from '../state/index.js';
+ import '@primer/primitives/dist/css/functional/themes/light.css';
+ import '@primer/primitives/dist/css/functional/themes/dark.css';
+diff --git a/lib/theme/JupyterLabCss.js b/lib/theme/JupyterLabCss.js
+index b0d0523907b79d22e9b17ed1db211c69a4a10d81..6b0b48951dc0bcb50c44d1ff6f0276dca4892be6 100644
+--- a/lib/theme/JupyterLabCss.js
++++ b/lib/theme/JupyterLabCss.js
+@@ -96,7 +96,11 @@ export function JupyterLabCss(props) {
+         // Inject the JupyterLab theme stylesheet in a retrievable node.
+         theme
+             ?.then(module => {
+-            const css = module.default;
++            const css = typeof module === 'string'
++                ? module
++                : typeof module?.default === 'string'
++                    ? module.default
++                    : Object.values(module ?? {}).find(value => typeof value === 'string');
+             if (css) {
+                 // Remove any previously injected theme style tag
+                 document.body

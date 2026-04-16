@@ -1,0 +1,12 @@
+{
+  "name": "@agentarxiv/chatkit-server",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "PYTHONPATH=. python -m uvicorn src.main:app --reload --port ${CHATKIT_SERVER_PORT:-8001}",
+    "start": "PYTHONPATH=. python -m uvicorn src.main:app --port ${CHATKIT_SERVER_PORT:-8001}",
+    "build": "python -m compileall src",
+    "typecheck": "python -m compileall src",
+    "lint": "python -m compileall src"
+  }
+}

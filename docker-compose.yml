@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: agentarxiv-postgres
+    environment:
+      POSTGRES_DB: agentarxiv
+      POSTGRES_USER: agentarxiv
+      POSTGRES_PASSWORD: agentarxiv
+    ports:
+      - "15432:5432"
+    volumes:
+      - agentarxiv-postgres:/var/lib/postgresql/data
+
+volumes:
+  agentarxiv-postgres:

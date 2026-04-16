@@ -1,0 +1,35 @@
+# From Qubit Counts to Logical Qubits
+
+## Key Claims
+
+The central shift in the current quantum-computing literature is that raw physical qubit count is no longer a useful headline metric by itself. A useful system is one where many noisy physical qubits are combined into a single logical qubit whose error rate is lower than its components, and that only happens when error correction is operating below threshold. Google’s December 9, 2024 Willow result is a good example of the field crossing from theory to hardware reality: the team reported that a surface-code logical qubit improved as the lattice grew from 3x3 to 5x5 to 7x7, with encoded error suppressed by a factor of 2.14 and a logical qubit lifetime more than twice that of the best physical qubit.
+
+The gating factor is therefore not “more qubits” in the abstract, but whether the device, decoder, and code co-design can produce a stable logical qubit over repeated correction cycles. IBM’s May 30, 2025 explanation of fault-tolerant quantum computing makes the same point plainly: scaling qubit count alone does not solve the problem, because errors scale with the system unless fault tolerance is built in. The practical hurdle is a stack of requirements: low physical error rates, fast syndrome extraction, low-latency decoding, and logical gates that do not amplify noise.
+
+For a review-style paper, the clean thesis is that progress should be described as movement from “many physical qubits” toward “few but better logical qubits,” then toward “logical operations that remain reliable at depth.” A paper can be optimistic about the direction of travel while still being conservative about readiness.
+
+## Evidence
+
+- **Google, Feb. 22, 2023**: the team framed large-scale quantum computing as dependent on error rates dropping by several orders of magnitude, and described a roadmap toward building one logical qubit before scaling further.
+- **Google, Dec. 9, 2024**: Willow was presented as the first processor where error-corrected qubits improve as they get bigger. The key result was exponential error suppression with increasing surface-code size, not just a larger chip. The same post also notes that even after threshold is crossed, decoder delay remains a real systems bottleneck; Google reports 50 to 100 microseconds of decoder delay and explicitly warns that this can slow error-corrected operation.
+- **Google, Jan. 13, 2026**: dynamic surface codes extended the story beyond static surface-code circuits. The contribution here is architectural flexibility: fewer couplers, mitigation of correlated errors, and the ability to swap data and measure roles through walking circuits. Google also states the next milestone as a long-lived logical qubit with error rate below one error per million correction cycles. That is a roadmap target, not a demonstrated endpoint.
+- **Nature, Feb. 1, 2024 issue / published Dec. 6, 2023**: the neutral-atom paper *Logical quantum processor based on reconfigurable atom arrays* reported a programmable logical processor using up to 280 physical qubits, with demonstrations including distance scaling from d = 3 to d = 7, break-even color-code fidelities, fault-tolerant GHZ creation, feedforward entanglement teleportation, and 48 logical qubits in a sampling circuit. This is one of the strongest examples for showing that “logical processor” is a real experimental category, not just a vocabulary choice.
+- **Nature, published Nov. 10, 2025**: *A fault-tolerant neutral-atom architecture for universal quantum computation* reported up to 448 neutral atoms, 2.14(13)x below-threshold performance in a four-round characterization circuit, and mid-circuit qubit reuse that increased cycle rates by two orders of magnitude. It also reports deep-circuit protocols with dozens of logical qubits and hundreds of logical teleportations.
+- **IBM, May 30, 2025**: IBM’s explanation is useful because it is deliberately non-hyped and systems-oriented. It stresses that meaningful fault tolerance means large-scale devices capable of hundreds of millions of logical operations on hundreds or thousands of qubits, not a small proof-of-principle demo. It also underscores that universal logical gate sets and magic-state-style machinery remain required.
+
+## What To Avoid Saying
+
+Do not say that the field has “solved” quantum computing, or that any one below-threshold result means large-scale usefulness is imminent. Below-threshold behavior is a necessary milestone, not the end state. Also avoid collapsing all “qubit” language into one bucket. Physical qubits are the noisy hardware units; logical qubits are encoded states spread across many physical qubits; and fault-tolerant algorithms still require reliable logical gates, not just protected storage.
+
+Do not compare unrelated platforms as if they were directly equivalent. A 280-physical-qubit neutral-atom logical processor, a 105-qubit superconducting chip, and a 448-atom architecture are not interchangeable claims. They differ in code family, measurement cadence, connectivity, error model, and decoding strategy. Any cross-platform comparison should be framed as an analogy about progress, not as a ranking table.
+
+Do not over-read roadmap statements. Google’s “less than one error per million cycles” target, IBM’s long-range FTQC plans, and similar vendor projections are useful to show ambition, but they should be labeled as projections. The paper should be careful to separate demonstrated error suppression from expected future scalability.
+
+## Useful Citations
+
+- [Google Research, “Making quantum error correction work”](https://research.google/blog/making-quantum-error-correction-work/) (Dec. 9, 2024): best citation for below-threshold Willow results, 3x3 to 7x7 scaling, and the distinction between physical and logical qubits.
+- [Google Research, “Suppressing quantum errors by scaling a surface code logical qubit”](https://research.google/blog/suppressing-quantum-errors-by-scaling-a-surface-code-logical-qubit/) (Feb. 22, 2023): useful for early roadmap framing and the “one logical qubit first” mindset.
+- [Google Research, “Dynamic surface codes open new avenues for quantum error correction”](https://research.google/blog/dynamic-surface-codes-open-new-avenues-for-quantum-error-correction/) (Jan. 13, 2026): cite for dynamic circuits, walking codes, and the next milestone language.
+- [IBM Quantum, “What is fault-tolerant quantum computing?”](https://www.ibm.com/quantum/blog/what-is-ftqc) (May 30, 2025): strong source for a sober, systems-level definition of fault tolerance.
+- [Nature, “Logical quantum processor based on reconfigurable atom arrays”](https://www.nature.com/articles/s41586-023-06927-3) (published Dec. 6, 2023; issue date Feb. 1, 2024): cite for the 280-physical-qubit logical processor and 48-logical-qubit demonstrations.
+- [Nature, “A fault-tolerant neutral-atom architecture for universal quantum computation”](https://www.nature.com/articles/s41586-025-09848-5) (published Nov. 10, 2025): cite for 448 atoms, 2.14x below-threshold performance, and qubit reuse at two orders of magnitude higher cycle rate.

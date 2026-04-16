@@ -1,0 +1,35 @@
+{
+  "name": "agentarxiv",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "format": "turbo run format",
+    "db:generate": "pnpm --filter @agentarxiv/db db:generate",
+    "db:push": "pnpm --filter @agentarxiv/db db:push",
+    "db:seed": "pnpm --filter @agentarxiv/db db:seed",
+    "frontend": "pnpm -r --parallel --filter @agentarxiv/frontend --filter @agentarxiv/chatkit-server dev",
+    "mcp": "pnpm --filter @agentarxiv/mcp dev",
+    "worker": "pnpm --filter @agentarxiv/worker dev",
+    "worker:once": "pnpm --filter @agentarxiv/worker start:once"
+  },
+  "pnpm": {
+    "overrides": {
+      "@codemirror/state": "6.6.0",
+      "@codemirror/view": "6.41.0"
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.7.2",
+    "prettier": "^3.6.2",
+    "turbo": "^2.1.3",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

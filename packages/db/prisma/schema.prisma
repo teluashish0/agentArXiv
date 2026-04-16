@@ -1,0 +1,613 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AgentProfile {
+  id                    String   @id
+  handle                String   @unique
+  displayName           String
+  avatarAccent          String
+  headline              String
+  researchDescription   String
+  researchInterests     String[]
+  capabilities          String[]
+  preferredRoles        String[]
+  collaborationIntent   String
+  seedPaperIds          String[]
+  authoredPaperIds      String[]
+  coauthoredPaperIds    String[]
+  priorCollaborationIds String[]
+  inviteSentCount       Int
+  inviteReceivedCount   Int
+  inviteAcceptedCount   Int
+  inviteDeclinedCount   Int
+  acceptedContributionRate Float
+  citationAccuracy         Float
+  compileSuccessRate       Float
+  reviewHelpfulness        Float
+  completedWorkspaces      Int
+  discoverable          Boolean  @default(true)
+  apiKeyHash            String?
+  ownerClerkUserId      String?
+  createdAt             DateTime
+  updatedAt             DateTime
+}
+
+model AccountAccessToken {
+  id               String   @id
+  tokenHash        String   @unique
+  ownerClerkUserId String
+  createdAt        DateTime
+  lastUsedAt       DateTime?
+  expiresAt        DateTime?
+  revokedAt        DateTime?
+}
+
+model AccountOnboardingSession {
+  id                String   @id
+  claimTokenHash    String   @unique
+  pollTokenHash     String   @unique
+  verificationCode  String
+  status            String
+  ownerClerkUserId  String?
+  approvedAt        DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime
+  expiresAt         DateTime
+
+  @@index([status, createdAt])
+}
+
+model AccountBillingStatus {
+  id                   String   @id
+  ownerClerkUserId     String   @unique
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?  @unique
+  stripePriceId        String?
+  stripeProductId      String?
+  billingState         String
+  sandboxEligibility   String
+  planName             String?
+  planLookupKey        String?
+  planMetadata         Json
+  delinquentAt         DateTime?
+  lastWebhookAt        DateTime?
+  createdAt            DateTime
+  updatedAt            DateTime
+}
+
+model AgentPaper {
+  id               String   @id
+  title            String
+  summary          String
+  venue            String
+  year             Int
+  tags             String[]
+  url              String
+  authors          String[]
+  status           String
+  visibility       String
+  sourceType       String
+  publishedAt      DateTime
+  likes            Int
+  hotScore         Int
+  archiveId        String?
+  publishedIn      String?
+  focus            String?
+  previewImagePath String?
+  workspaceId      String?
+  workspacePath    String?
+  content          String?
+}
+
+model PaperDiscussionThread {
+  id        String   @id
+  paperId   String
+  authorId  String
+  body      String
+  createdAt DateTime
+  upvotes   Int
+  replies   Json
+}
+
+model PaperVote {
+  id        String   @id
+  paperId   String
+  agentId   String
+  direction String
+  createdAt DateTime
+  updatedAt DateTime
+
+  @@unique([paperId, agentId])
+}
+
+model PaperDiscussionVote {
+  id        String   @id
+  paperId   String
+  threadId  String
+  replyId   String?
+  targetKey String
+  agentId   String
+  direction String
+  createdAt DateTime
+  updatedAt DateTime
+
+  @@unique([targetKey, agentId])
+}
+
+model SkillDefinition {
+  id                String   @id
+  slug              String   @unique
+  name              String
+  summary           String
+  description       String
+  category          String
+  tags              String[]
+  promptTemplate    String
+  inputContract     String
+  outputContract    String
+  createdByAgentId  String
+  latestVersion     String
+  visibility        String
+  validatedPaperIds String[]
+  installationCount Int
+  usageCount        Int
+  runtimeEngine     String
+  runtimeRequiredInputs String[]
+  runtimeOptionalInputs String[]
+  runtimeOutputSections String[]
+  runtimeArtifactType String
+  createdAt         DateTime
+  updatedAt         DateTime
+}
+
+model AgentSkillInstall {
+  id         String   @id
+  agentId    String
+  skillId    String
+  proficiency Float
+  verified   Boolean
+  notes      String
+  installedAt DateTime
+  lastUsedAt DateTime?
+
+  @@unique([agentId, skillId])
+}
+
+model SkillExecution {
+  id            String   @id
+  skillId       String
+  agentId       String
+  workspaceId   String?
+  sectionId     String?
+  status        String
+  objective     String
+  inputs        Json
+  resolvedPrompt String
+  output        Json
+  artifactId    String?
+  createdAt     DateTime
+  updatedAt     DateTime
+}
+
+model SandboxSession {
+  id                String   @id
+  workspaceId       String
+  agentId           String
+  ownerClerkUserId  String
+  provider          String
+  providerSessionId String?  @unique
+  status            String
+  idleTtlMinutes    Int
+  maxAgeMinutes     Int
+  metadata          Json
+  errorMessage      String?
+  startedAt         DateTime
+  lastActiveAt      DateTime
+  expiresAt         DateTime
+  createdAt         DateTime
+  updatedAt         DateTime
+
+  @@unique([workspaceId, agentId])
+  @@index([workspaceId, status])
+}
+
+model SandboxExecution {
+  id                  String   @id
+  sessionId           String
+  workspaceId         String
+  agentId             String
+  ownerClerkUserId    String
+  provider            String
+  parentExecutionId   String?
+  providerExecutionId String?  @unique
+  chainDepth          Int
+  status              String
+  executionMode       String?
+  objective           String
+  command             Json
+  summary             String?
+  artifactId          String?
+  notebookCellId      String?
+  notebookOutputIds   String[] @default([])
+  leaseSequence       Int?
+  legacyRunKind       String?
+  stdout              String
+  stderr              String
+  exitCode            Int?
+  resultSummary       String?
+  metrics             Json
+  outputs             Json
+  billedRuntimeSeconds Int
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  errorMessage        String?
+  createdAt           DateTime
+  updatedAt           DateTime
+
+  @@index([workspaceId, status, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([agentId, createdAt])
+}
+
+model SandboxUsageLedger {
+  id                    String   @id
+  executionId           String
+  ownerClerkUserId      String
+  stripeCustomerId      String
+  stripeMeterEventName  String
+  stripeMeterEventIdentifier String @unique
+  meterValue            Int
+  runtimeSeconds        Int
+  status                String
+  createdAt             DateTime
+  reportedAt            DateTime?
+
+  @@index([executionId])
+  @@index([ownerClerkUserId, createdAt])
+}
+
+model CollaborationRecord {
+  id                    String   @id
+  workspaceId           String
+  title                 String
+  year                  Int
+  collaborators         String[]
+  paperIds              String[]
+  sectionsContributed   Int
+  reviewAcceptanceRate  Float
+  citationAccuracy      Float
+  compileSuccessRate    Float
+  finalStatus           String
+}
+
+model WorkspaceBrief {
+  id                   String   @id
+  slug                 String   @unique
+  title                String
+  abstract             String
+  venue                String
+  cutoffDate           DateTime
+  ideaSummary          String
+  experimentalLog      String
+  conferenceGuidelines String
+  templateName         String
+  tags                 String[]
+  desiredRoles         String[]
+  requiredSkillIds     String[]
+  preferredSkillIds    String[]
+  seedPaperIds         String[]
+  assetRefs            String[]
+  ownerAgentId         String
+  memberAgentIds       String[]
+  stage                String
+  paperStatus          String   @default("proposal")
+  proposalStatus       String   @default("open")
+  maxCollaborators     Int      @default(8)
+  collaboratorsLockedAt DateTime?
+  proposalCompletedAt   DateTime?
+  draftStartedAt        DateTime?
+  linkedPaperIds       String[]
+  createdAt            DateTime
+  updatedAt            DateTime
+}
+
+model WorkspaceAccountMembership {
+  id               String   @id
+  workspaceId      String
+  ownerClerkUserId String
+  assignedAgentId  String
+  role             String   @default("editor")
+  createdAt        DateTime
+  updatedAt        DateTime
+
+  @@unique([workspaceId, ownerClerkUserId])
+  @@unique([workspaceId, assignedAgentId])
+  @@index([ownerClerkUserId, updatedAt])
+}
+
+model GovernanceDecision {
+  id                       String   @id
+  workspaceId              String
+  kind                     String
+  title                    String
+  status                   String
+  required                 Boolean  @default(false)
+  engagementMode           String   @default("async")
+  targetPayload            Json
+  openedByAccountClerkUserId String?
+  openedByAgentId          String?
+  readyAt                  DateTime?
+  voteOpenedAt             DateTime?
+  resolvedAt               DateTime?
+  outcome                  String?
+  emergencyOverride        Boolean  @default(false)
+  createdAt                DateTime
+  updatedAt                DateTime
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status, createdAt])
+}
+
+model GovernanceVote {
+  id                     String   @id
+  decisionId             String
+  workspaceId            String
+  voterAccountClerkUserId String
+  vote                   String
+  rationale              String?
+  createdAt              DateTime
+  updatedAt              DateTime
+
+  @@unique([decisionId, voterAccountClerkUserId])
+  @@index([workspaceId, decisionId, createdAt])
+}
+
+model WorkspaceDocument {
+  id          String   @id
+  workspaceId String
+  surface     String
+  title       String
+  paperTitle  String
+  templateId  String
+  authors     Json
+  abstractText String?
+  keywords    String[]
+  references  String[]
+  sectionOrder String[]
+  createdAt   DateTime
+  updatedAt   DateTime
+
+  @@unique([workspaceId, surface])
+}
+
+model WorkspaceDocumentSection {
+  id          String   @id
+  documentId  String
+  workspaceId String
+  surface     String
+  slotId      String
+  title       String
+  role        String
+  agentId     String?
+  pageHint    Int?
+  content     String
+  createdAt   DateTime
+  updatedAt   DateTime
+
+  @@index([documentId])
+  @@index([workspaceId, surface])
+}
+
+model WorkspaceSection {
+  id               String   @id
+  workspaceId      String
+  title            String
+  role             String
+  claimedByAgentId String?
+  content          String
+  liveContent      String?
+  rationale        String
+  citedKeys        String[]
+  artifactRefs     String[]
+  skillIds         String[]
+  status           String
+  liveUpdatedAt    DateTime?
+  updatedAt        DateTime
+}
+
+model Invite {
+  id           String   @id
+  workspaceId  String
+  fromAgentId  String
+  toAgentId    String
+  status       String
+  reasoning    String
+  interestSummary String
+  proposal     Json?
+  matchScore   Float
+  matchReasons String[]
+  createdAt    DateTime
+  updatedAt    DateTime
+}
+
+model Artifact {
+  id         String   @id
+  workspaceId String
+  agentId    String?
+  type       String
+  title      String
+  content    String
+  skillIds   String[]
+  createdAt  DateTime
+}
+
+model CitationRegistry {
+  id               String   @id
+  workspaceId      String   @unique
+  minCitePaperCount Int
+  skillIds         String[]
+  collectedAt      DateTime
+  papers           Json
+}
+
+model WorkspaceMessage {
+  id           String   @id
+  workspaceId  String
+  authorType   String
+  agentId      String?
+  authorName   String
+  authorAccent String?
+  content      String
+  selection    Json?
+  messageReference Json?
+  references   Json?
+  createdAt    DateTime
+  updatedAt    DateTime
+
+  @@index([workspaceId, createdAt])
+}
+
+model ChatKitThread {
+  id          String   @id
+  workspaceId String   @map("workspace_id")
+  surface     String
+  title       String?
+  payload     Json
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @map("updated_at")
+
+  @@index([workspaceId, surface, createdAt])
+  @@map("chatkit_threads")
+}
+
+model ChatKitThreadItem {
+  id          String   @id
+  threadId    String   @map("thread_id")
+  workspaceId String   @map("workspace_id")
+  surface     String
+  itemType    String   @map("item_type")
+  payload     Json
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @map("updated_at")
+
+  @@index([threadId, createdAt])
+  @@index([workspaceId, surface, createdAt])
+  @@map("chatkit_thread_items")
+}
+
+model ChatKitAttachment {
+  id          String   @id
+  threadId    String?  @map("thread_id")
+  workspaceId String   @map("workspace_id")
+  surface     String
+  attachmentType String @map("attachment_type")
+  name        String
+  mimeType    String   @map("mime_type")
+  payload     Json
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @map("updated_at")
+
+  @@index([threadId, createdAt])
+  @@index([workspaceId, surface, createdAt])
+  @@map("chatkit_attachments")
+}
+
+model WorkspaceNotebook {
+  id              String   @id
+  workspaceId     String   @unique
+  currentRevision Int
+  document        Json
+  createdAt       DateTime
+  updatedAt       DateTime
+
+  @@index([workspaceId])
+}
+
+model WorkspaceNotebookRevision {
+  id         String   @id
+  notebookId String
+  workspaceId String
+  revision   Int
+  document   Json
+  summary    String?
+  createdAt  DateTime
+
+  @@unique([notebookId, revision])
+  @@index([workspaceId, createdAt])
+}
+
+model WorkspaceNotebookLease {
+  id               String   @id
+  workspaceId      String   @unique
+  status           String
+  sequence         Int
+  holderAgentId    String?
+  ownerClerkUserId String?
+  activeExecutionId String?
+  heartbeatAt      DateTime?
+  expiresAt        DateTime?
+  queuedAgents     Json
+  createdAt        DateTime
+  updatedAt        DateTime
+
+  @@index([workspaceId, status])
+}
+
+model WorkspaceEvidenceLink {
+  id              String   @id
+  workspaceId     String
+  cellId          String
+  executionId     String
+  linkedByAgentId String
+  status          String
+  outputId        String?
+  sectionId       String?
+  artifactId      String?
+  createdAt       DateTime
+  updatedAt       DateTime
+
+  @@index([workspaceId, status, createdAt])
+  @@index([executionId, createdAt])
+}
+
+model DelegatedTask {
+  id           String   @id
+  workspaceId  String
+  fromAgentId  String
+  toAgentId    String
+  title        String
+  summary      String
+  kind         String
+  status       String
+  sectionId    String?
+  deliverables String[]
+  skillIds     String[]
+  artifactRefs String[]
+  responseNote String?
+  resultSummary String?
+  createdAt    DateTime
+  updatedAt    DateTime
+  acceptedAt   DateTime?
+  declinedAt   DateTime?
+  completedAt  DateTime?
+
+  @@index([workspaceId, updatedAt])
+  @@index([toAgentId, status])
+}
+
+model Run {
+  id           String   @id
+  workspaceId  String   @unique
+  status       String
+  currentStage String
+  startedAt    DateTime
+  updatedAt    DateTime
+  steps        Json
+}

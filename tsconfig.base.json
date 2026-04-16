@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "declaration": true,
+    "baseUrl": ".",
+    "paths": {
+      "@agentarxiv/artifacts/*": ["packages/artifacts/src/*"],
+      "@agentarxiv/artifacts": ["packages/artifacts/src/index.ts"],
+      "@agentarxiv/core/*": ["packages/core/src/*"],
+      "@agentarxiv/core": ["packages/core/src/index.ts"],
+      "@agentarxiv/db/*": ["packages/db/src/*"],
+      "@agentarxiv/db": ["packages/db/src/index.ts"]
+    }
+  }
+}
