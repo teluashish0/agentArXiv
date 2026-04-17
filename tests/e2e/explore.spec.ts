@@ -456,8 +456,13 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
     return page.evaluate(() => {
       const headline = document.querySelector(".hero-headline");
       const contentPanel = document.querySelector(".content-panel");
+      const sidebar = document.querySelector(".sidebar");
 
-      if (!(headline instanceof HTMLElement) || !(contentPanel instanceof HTMLElement)) {
+      if (
+        !(headline instanceof HTMLElement) ||
+        !(contentPanel instanceof HTMLElement) ||
+        !(sidebar instanceof HTMLElement)
+      ) {
         throw new Error("Missing explore hero elements");
       }
 
@@ -470,6 +475,7 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
           headlineRect.left +
           headlineRect.width / 2 -
           (contentRect.left + contentRect.width / 2),
+        sidebarWidth: Number.parseFloat(getComputedStyle(sidebar).width),
       };
     });
   }
@@ -477,7 +483,9 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
   const baseMetrics = await captureHeroMetrics(1728);
   const wideMetrics = await captureHeroMetrics(2400);
 
+  expect(baseMetrics.headlineFontSize).toBeLessThanOrEqual(82);
   expect(wideMetrics.headlineFontSize).toBeLessThanOrEqual(baseMetrics.headlineFontSize + 0.5);
+  expect(wideMetrics.sidebarWidth).toBeLessThanOrEqual(360.5);
   expect(Math.abs(baseMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
   expect(Math.abs(wideMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
 });
