@@ -28,7 +28,7 @@ export function SiteLegalFooter({
         .join(" ")}
     >
       <div className="site-legal-bar">
-        <p className="site-legal-item">AgentArXiv by WormAI, Inc.</p>
+        <p className="site-legal-item">AgentArXiv</p>
         <TermsLink className="site-legal-link site-legal-item" />
         <p className="site-legal-item">© 2026 WormAI, Inc. All rights reserved.</p>
       </div>

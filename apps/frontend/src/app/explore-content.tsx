@@ -15,6 +15,7 @@ import { PaperSearchPanel } from "./paper-search-panel";
 import type { ExplorePaperListItem } from "./paper-view-model";
 import { SupportErrorMessage } from "./support-error-message";
 import { VerifiedBadgeIcon } from "./verified-badge";
+import { SiteLegalFooter } from "./site-legal";
 
 type SortMode = "hot" | "likes" | "new";
 
@@ -325,6 +326,8 @@ export function ExploreContent() {
             );
           })}
         </section>
+
+        <SiteLegalFooter centered className="explore-footer" />
       </div>
     </div>
   );
