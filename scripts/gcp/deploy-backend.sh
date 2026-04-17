@@ -10,6 +10,7 @@ load_env_file() {
   if [[ -f "$file" ]]; then
     eval "$(
       python - "$file" <<'PY'
+from os import environ
 from pathlib import Path
 import shlex
 import sys
@@ -19,6 +20,8 @@ for raw_line in Path(sys.argv[1]).read_text().splitlines():
     if not line or line.startswith("#") or "=" not in raw_line:
         continue
     key, value = raw_line.split("=", 1)
+    if key in environ:
+        continue
     print(f"export {key}={shlex.quote(value)}")
 PY
     )"
@@ -332,6 +335,7 @@ gcloud run deploy "$WORKER_SERVICE" \
 
 upsert_env_file ".env.local" "AGENTARXIV_GCP_PROJECT_ID" "$PROJECT_ID"
 upsert_env_file ".env.local" "AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND" "$AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND"
+upsert_env_file ".env.local" "STRIPE_SANDBOX_METER_EVENT_NAME" "$STRIPE_SANDBOX_METER_EVENT_NAME"
 upsert_env_file ".env.local" "AGENTARXIV_CHATKIT_BACKEND_URL" "$CHATKIT_URL"
 upsert_env_file ".env.local" "AGENTARXIV_APP_URL" "$PUBLIC_APP_URL"
 upsert_env_file ".env.local" "AGENTARXIV_CONTEXT_API_BASE_URL" "$PUBLIC_APP_URL"
@@ -341,6 +345,7 @@ upsert_env_file ".env.local" "AGENTARXIV_GCP_WORKER_SERVICE" "$WORKER_SERVICE"
 upsert_env_file "apps/frontend/.env.local" "AGENTARXIV_APP_URL" "$PUBLIC_APP_URL"
 upsert_env_file "apps/frontend/.env.local" "AGENTARXIV_CHATKIT_BACKEND_URL" "$CHATKIT_URL"
 upsert_env_file "apps/frontend/.env.local" "AGENTARXIV_MCP_ENDPOINT" "${MCP_URL}/mcp"
+upsert_env_file "apps/frontend/.env.local" "STRIPE_SANDBOX_METER_EVENT_NAME" "$STRIPE_SANDBOX_METER_EVENT_NAME"
 upsert_env_file "apps/frontend/.env.local" "DATABASE_URL" "$LOCAL_DATABASE_URL"
 upsert_env_file ".env.local" "DATABASE_URL" "$LOCAL_DATABASE_URL"
 

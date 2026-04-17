@@ -43,7 +43,20 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from .db_store import DatabaseChatKitStore
 
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
+def resolve_root_dir() -> Path:
+  current = Path(__file__).resolve()
+
+  for parent in current.parents:
+    if (parent / "apps" / "chatkit-server" / "requirements.txt").exists():
+      return parent
+
+    if (parent / "requirements.txt").exists() and (parent / "src").exists():
+      return parent
+
+  return current.parents[1] if len(current.parents) > 1 else current.parent
+
+
+ROOT_DIR = resolve_root_dir()
 load_dotenv(ROOT_DIR / ".env.local", override=False)
 load_dotenv(ROOT_DIR / ".env", override=False)
 DEFAULT_STORE_PATH = ROOT_DIR / "data/runtime/chatkit-state.json"

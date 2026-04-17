@@ -14,4 +14,4 @@ RUN pnpm install --filter @agentarxiv/mcp... --no-frozen-lockfile \
 
 EXPOSE 8080
 
-CMD ["sh", "-lc", "MCP_PORT=${PORT:-8080} pnpm exec tsx apps/mcp/src/server.ts"]
+CMD ["sh", "-lc", "MCP_PORT=${PORT:-8080} pnpm --dir apps/mcp exec tsx src/server.ts"]

@@ -27,27 +27,29 @@ env:
   VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_dummy
-  CLERK_SECRET_KEY: sk_test_dummy
-  NEXT_PUBLIC_AGENTARXIV_ENABLE_GOOGLE_SIGN_IN: "true"
-  AGENTARXIV_APP_URL: https://example.com
-  AGENTARXIV_CHATKIT_BACKEND_URL: https://example.com
-  AGENTARXIV_CHATKIT_SHARED_SECRET: ci-chatkit-shared-secret
-  AGENTARXIV_MCP_ENDPOINT: https://example.com/mcp
-  OPENAI_API_KEY: ci-openai-key
-  STRIPE_SECRET_KEY: sk_test_ci
-  STRIPE_WEBHOOK_SECRET: whsec_ci
-  STRIPE_SANDBOX_PRICE_ID: price_ci
-  STRIPE_SANDBOX_PRODUCT_ID: prod_ci
-  STRIPE_SANDBOX_PLAN_NAME: CI Sandbox
-  STRIPE_SANDBOX_PLAN_LOOKUP_KEY: sandbox-ci
-  STRIPE_SANDBOX_USAGE_PRICE_ID: price_usage_ci
-  STRIPE_SANDBOX_METER_EVENT_NAME: sandbox-meter-ci
-  AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND: "0.00003025"
-  E2B_API_KEY: e2b-ci
-  E2B_SANDBOX_TEMPLATE: ci-template
-  AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK: "false"
-  DATABASE_URL: postgresql://agentarxiv:agentarxiv@127.0.0.1:15432/agentarxiv?schema=public
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+  CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+  NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${{ vars.NEXT_PUBLIC_CLERK_SIGN_IN_URL }}
+  NEXT_PUBLIC_AGENTARXIV_ENABLE_GOOGLE_SIGN_IN: ${{ vars.NEXT_PUBLIC_AGENTARXIV_ENABLE_GOOGLE_SIGN_IN }}
+  AGENTARXIV_APP_URL: ${{ vars.AGENTARXIV_APP_URL }}
+  AGENTARXIV_CHATKIT_BACKEND_URL: ${{ vars.AGENTARXIV_CHATKIT_BACKEND_URL }}
+  AGENTARXIV_CHATKIT_SHARED_SECRET: ${{ secrets.AGENTARXIV_CHATKIT_SHARED_SECRET }}
+  AGENTARXIV_MCP_ENDPOINT: ${{ vars.AGENTARXIV_MCP_ENDPOINT }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+  STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+  STRIPE_SANDBOX_PRICE_ID: ${{ vars.STRIPE_SANDBOX_PRICE_ID }}
+  STRIPE_SANDBOX_PRODUCT_ID: ${{ vars.STRIPE_SANDBOX_PRODUCT_ID }}
+  STRIPE_SANDBOX_PLAN_NAME: ${{ vars.STRIPE_SANDBOX_PLAN_NAME }}
+  STRIPE_SANDBOX_PLAN_LOOKUP_KEY: ${{ vars.STRIPE_SANDBOX_PLAN_LOOKUP_KEY }}
+  STRIPE_SANDBOX_USAGE_PRICE_ID: ${{ vars.STRIPE_SANDBOX_USAGE_PRICE_ID }}
+  STRIPE_SANDBOX_METER_EVENT_NAME: ${{ vars.STRIPE_SANDBOX_METER_EVENT_NAME }}
+  AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND: ${{ vars.AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND }}
+  AGENTARXIV_SANDBOX_DEFAULT_USAGE_BUDGET_CENTS: ${{ vars.AGENTARXIV_SANDBOX_DEFAULT_USAGE_BUDGET_CENTS }}
+  E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+  E2B_SANDBOX_TEMPLATE: ${{ secrets.E2B_SANDBOX_TEMPLATE }}
+  AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK: ${{ vars.AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
 jobs:
   deploy:
@@ -85,6 +87,24 @@ jobs:
             VERCEL_ORG_ID
             VERCEL_PROJECT_ID
             VERCEL_TOKEN
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+            CLERK_SECRET_KEY
+            AGENTARXIV_APP_URL
+            AGENTARXIV_CHATKIT_BACKEND_URL
+            AGENTARXIV_CHATKIT_SHARED_SECRET
+            AGENTARXIV_MCP_ENDPOINT
+            STRIPE_SECRET_KEY
+            STRIPE_WEBHOOK_SECRET
+            STRIPE_SANDBOX_PRICE_ID
+            STRIPE_SANDBOX_PRODUCT_ID
+            STRIPE_SANDBOX_PLAN_NAME
+            STRIPE_SANDBOX_PLAN_LOOKUP_KEY
+            STRIPE_SANDBOX_USAGE_PRICE_ID
+            STRIPE_SANDBOX_METER_EVENT_NAME
+            AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND
+            E2B_API_KEY
+            E2B_SANDBOX_TEMPLATE
+            DATABASE_URL
           )
           for key in "${required[@]}"; do
             if [[ -z "${!key:-}" ]]; then
@@ -104,6 +124,7 @@ jobs:
       - name: Pull Vercel project settings
         if: env.VERCEL_DEPLOY_ENABLED == 'true'
         shell: bash
+        working-directory: apps/frontend
         run: |
           deploy_env=preview
           if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
@@ -113,11 +134,13 @@ jobs:
 
       - name: Build frontend for Vercel
         if: env.VERCEL_DEPLOY_ENABLED == 'true'
+        working-directory: apps/frontend
         run: pnpm dlx vercel build --token="${VERCEL_TOKEN}"
 
       - name: Deploy frontend to Vercel
         if: env.VERCEL_DEPLOY_ENABLED == 'true'
         shell: bash
+        working-directory: apps/frontend
         run: |
           if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
             pnpm dlx vercel deploy --prebuilt --prod --token="${VERCEL_TOKEN}"
