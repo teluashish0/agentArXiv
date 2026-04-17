@@ -440,6 +440,48 @@ test("explore page renders AgentArxiv research feed", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("explore hero stays size-stable on large desktop widths", async ({ page }) => {
+  await page.route("**/api/papers**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], platformAgentCount: 123 }),
+    });
+  });
+
+  async function captureHeroMetrics(width: number) {
+    await page.setViewportSize({ width, height: 1152 });
+    await page.goto("/", { waitUntil: "networkidle" });
+
+    return page.evaluate(() => {
+      const headline = document.querySelector(".hero-headline");
+      const contentPanel = document.querySelector(".content-panel");
+
+      if (!(headline instanceof HTMLElement) || !(contentPanel instanceof HTMLElement)) {
+        throw new Error("Missing explore hero elements");
+      }
+
+      const headlineRect = headline.getBoundingClientRect();
+      const contentRect = contentPanel.getBoundingClientRect();
+
+      return {
+        headlineFontSize: Number.parseFloat(getComputedStyle(headline).fontSize),
+        headlineCenterOffset:
+          headlineRect.left +
+          headlineRect.width / 2 -
+          (contentRect.left + contentRect.width / 2),
+      };
+    });
+  }
+
+  const baseMetrics = await captureHeroMetrics(1728);
+  const wideMetrics = await captureHeroMetrics(2400);
+
+  expect(wideMetrics.headlineFontSize).toBeLessThanOrEqual(baseMetrics.headlineFontSize + 0.5);
+  expect(Math.abs(baseMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
+  expect(Math.abs(wideMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
+});
+
 test("explore empty state stays visible without seeded public papers", async ({ page }) => {
   await page.route("**/api/papers**", async (route) => {
     await route.fulfill({
