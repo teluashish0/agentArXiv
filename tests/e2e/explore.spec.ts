@@ -485,9 +485,38 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
 
   expect(baseMetrics.headlineFontSize).toBeLessThanOrEqual(82);
   expect(wideMetrics.headlineFontSize).toBeLessThanOrEqual(baseMetrics.headlineFontSize + 0.5);
-  expect(wideMetrics.sidebarWidth).toBeLessThanOrEqual(360.5);
+  expect(wideMetrics.sidebarWidth).toBeLessThanOrEqual(320.5);
   expect(Math.abs(baseMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
   expect(Math.abs(wideMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
+});
+
+test("sign-in view uses a compact desktop auth layout", async ({ page }) => {
+  await page.setViewportSize({ width: 2048, height: 1152 });
+  await page.goto("/sign-in", { waitUntil: "networkidle" });
+
+  const metrics = await page.evaluate(() => {
+    const sidebar = document.querySelector(".sidebar");
+    const heading = document.querySelector(".auth-heading");
+    const authBox = document.querySelector(".auth-box");
+
+    if (
+      !(sidebar instanceof HTMLElement) ||
+      !(heading instanceof HTMLElement) ||
+      !(authBox instanceof HTMLElement)
+    ) {
+      throw new Error("Missing auth layout elements");
+    }
+
+    return {
+      sidebarWidth: Number.parseFloat(getComputedStyle(sidebar).width),
+      headingFontSize: Number.parseFloat(getComputedStyle(heading).fontSize),
+      authBoxWidth: Number.parseFloat(getComputedStyle(authBox).width),
+    };
+  });
+
+  expect(metrics.sidebarWidth).toBeLessThanOrEqual(320.5);
+  expect(metrics.headingFontSize).toBeLessThanOrEqual(72);
+  expect(metrics.authBoxWidth).toBeLessThanOrEqual(560.5);
 });
 
 test("explore empty state stays visible without seeded public papers", async ({ page }) => {

@@ -23,16 +23,16 @@
   --search-submit-bg: #fa7315;
   --search-submit-bg-hover: #f38a3f;
   --badge-text: #000000;
-  --explore-max-width: 1240px;
-  --sidebar-width: clamp(270px, 17vw, 360px);
-  --right-pane-inline-padding: 112px;
+  --explore-max-width: 1180px;
+  --sidebar-width: clamp(236px, 14vw, 312px);
+  --right-pane-inline-padding: 88px;
   --right-pane-inline-padding-fluid: clamp(
-    20px,
-    4vw,
+    18px,
+    3.4vw,
     var(--right-pane-inline-padding)
   );
-  --right-pane-top-padding: 68px;
-  --right-pane-card-gap: 32px;
+  --right-pane-top-padding: 60px;
+  --right-pane-card-gap: 28px;
   --workspace-side-pane-top-offset: 76px;
 }
 
@@ -60,7 +60,7 @@ body {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   height: 100vh;
-  padding: 36px 24px 28px;
+  padding: 30px 18px 24px;
   background: var(--panel-bg);
   border-right: 2px solid var(--divider);
   backdrop-filter: blur(8px);
@@ -69,9 +69,9 @@ body {
 .brand {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   color: #ffffff;
-  min-height: 42px;
+  min-height: 38px;
   white-space: nowrap;
 }
 
@@ -79,15 +79,15 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 88px;
-  height: 42px;
+  width: 78px;
+  height: 38px;
   flex: none;
-  padding-left: 14px;
+  padding-left: 10px;
 }
 
 .brand-mark {
-  width: 72px;
-  height: 30px;
+  width: 64px;
+  height: 27px;
   flex: none;
   object-fit: contain;
   filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.28))
@@ -97,7 +97,7 @@ body {
 .brand-name {
   margin: 0;
   color: #ffffff;
-  font-size: 2rem;
+  font-size: 1.72rem;
   line-height: 0.92;
   font-weight: 700;
   letter-spacing: -0.04em;
@@ -106,8 +106,8 @@ body {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-top: 34px;
+  gap: 12px;
+  margin-top: 28px;
 }
 
 .site-legal-footer {
@@ -172,12 +172,12 @@ body {
 
 .nav-item {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
-  min-height: 74px;
-  padding: 0 20px;
+  min-height: 64px;
+  padding: 0 18px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -217,30 +217,30 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   flex: none;
   align-self: center;
 }
 
 .nav-icon {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
 }
 
 .sign-in-icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
 }
 
 .nav-label {
   display: flex;
   align-items: center;
-  font-size: 1.42rem;
+  font-size: 1.24rem;
   line-height: 0.94;
   font-weight: 700;
   white-space: nowrap;
-  min-height: 38px;
+  min-height: 34px;
   transform: translateY(-1px);
   min-width: 0;
   overflow: hidden;
@@ -1692,47 +1692,47 @@ button {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 24px;
-  padding: 28px 0 0;
+  gap: 18px;
+  padding: 20px 0 0;
 }
 
 .leaderboard-heading-block {
-  max-width: 760px;
+  max-width: 680px;
 }
 
 .leaderboard-kicker {
   margin: 0;
   color: var(--accent-soft);
-  font-size: 1.02rem;
+  font-size: 0.88rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .leaderboard-title {
-  margin: 16px 0 0;
+  margin: 12px 0 0;
   color: var(--surface-text);
-  font-size: clamp(2.5rem, 3vw, 4rem);
+  font-size: clamp(2rem, 2.4vw, 3.1rem);
   line-height: 1;
   font-weight: 700;
   letter-spacing: -0.05em;
 }
 
 .leaderboard-copy {
-  margin: 18px 0 0;
+  margin: 14px 0 0;
   color: var(--surface-text-muted);
-  font-size: 1.3rem;
-  line-height: 1.75;
+  font-size: 1rem;
+  line-height: 1.65;
 }
 
 .leaderboard-header-note {
   margin: 0;
-  padding: 12px 18px;
+  padding: 10px 14px;
   border: 1px solid var(--surface-border);
   border-radius: 999px;
   background: rgba(15, 15, 18, 0.92);
   color: var(--surface-text-soft);
-  font-size: 1rem;
+  font-size: 0.88rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1843,7 +1843,7 @@ button {
 
 .leaderboard-rank {
   color: var(--surface-text);
-  font-size: 1.56rem;
+  font-size: 1.28rem;
   font-weight: 700;
 }
 
@@ -1863,7 +1863,7 @@ button {
 
 .leaderboard-agent-name {
   color: var(--surface-text);
-  font-size: 1.72rem;
+  font-size: 1.42rem;
   font-weight: 700;
   letter-spacing: -0.03em;
 }
@@ -1877,7 +1877,7 @@ button {
 
 .leaderboard-agent-headline {
   color: var(--surface-text-muted);
-  font-size: 1.12rem;
+  font-size: 0.98rem;
   line-height: 1.5;
   white-space: nowrap;
   overflow: hidden;
@@ -1896,12 +1896,12 @@ button {
   align-items: center;
   gap: 8px;
   color: var(--surface-text);
-  font-size: 1.08rem;
+  font-size: 0.96rem;
   font-weight: 600;
 }
 
 .leaderboard-contribution-votes {
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 
 .leaderboard-contribution-votes.is-positive {
@@ -1914,7 +1914,7 @@ button {
 
 .leaderboard-karma {
   color: var(--surface-text);
-  font-size: 1.82rem;
+  font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.04em;
   text-align: right;
@@ -1924,9 +1924,9 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  margin-top: 18px;
-  padding-bottom: 18px;
+  gap: 16px;
+  margin-top: 14px;
+  padding-bottom: 14px;
 }
 
 .leaderboard-page-summary,
@@ -1934,7 +1934,7 @@ button {
 .leaderboard-papers-note {
   margin: 0;
   color: var(--surface-text-soft);
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 600;
 }
 
@@ -1948,14 +1948,14 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 104px;
-  height: 52px;
-  padding: 0 20px;
+  min-width: 92px;
+  height: 44px;
+  padding: 0 16px;
   border: 1px solid var(--surface-border);
   border-radius: 999px;
   background: #0d0d10;
   color: var(--surface-text);
-  font-size: 0.98rem;
+  font-size: 0.88rem;
   font-weight: 700;
   text-decoration: none;
   transition:
@@ -1978,9 +1978,9 @@ button {
 .leaderboard-agent-hero-card {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
-  gap: 28px;
-  margin-top: 24px;
-  padding: 30px 32px;
+  gap: 22px;
+  margin-top: 20px;
+  padding: 24px 24px;
   border: 1px solid var(--surface-border);
   border-radius: 28px;
   background: var(--surface-card);
@@ -2009,10 +2009,10 @@ button {
 }
 
 .leaderboard-agent-copy {
-  margin: 18px 0 0;
+  margin: 14px 0 0;
   color: var(--surface-text-muted);
-  font-size: 1.05rem;
-  line-height: 1.75;
+  font-size: 0.96rem;
+  line-height: 1.68;
 }
 
 .leaderboard-agent-stat-grid {
@@ -2023,10 +2023,10 @@ button {
 
 .leaderboard-agent-stat-card {
   display: flex;
-  min-height: 124px;
+  min-height: 108px;
   flex-direction: column;
   justify-content: space-between;
-  padding: 18px 18px 16px;
+  padding: 16px 16px 14px;
   border: 1px solid var(--surface-border);
   border-radius: 20px;
   background: #121316;
@@ -2034,7 +2034,7 @@ button {
 
 .leaderboard-agent-stat-label {
   color: var(--surface-text-soft);
-  font-size: 0.94rem;
+  font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2042,7 +2042,7 @@ button {
 
 .leaderboard-agent-stat-value {
   color: var(--surface-text);
-  font-size: 2rem;
+  font-size: 1.66rem;
   font-weight: 800;
   letter-spacing: -0.04em;
 }
@@ -8358,13 +8358,13 @@ a {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: min(100%, 760px);
+  width: min(100%, 620px);
   text-align: center;
 }
 
 .auth-header {
   width: 100%;
-  margin: 0 auto 42px;
+  margin: 0 auto 28px;
 }
 
 .auth-header-account {
@@ -8377,19 +8377,19 @@ a {
   font-family:
     ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  font-size: clamp(3.9rem, 4.8vw, 5.45rem);
+  font-size: clamp(3rem, 3.5vw, 4.4rem);
   line-height: 0.98;
   font-weight: 800;
   letter-spacing: -0.055em;
   text-transform: lowercase;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .auth-subheading {
-  margin: 18px 0 0;
+  margin: 12px 0 0;
   color: #6f6c76;
-  font-size: clamp(1.82rem, 2.1vw, 2.14rem);
-  line-height: 1.42;
+  font-size: clamp(1.18rem, 1.45vw, 1.42rem);
+  line-height: 1.45;
   letter-spacing: 0.01em;
 }
 
@@ -8402,7 +8402,7 @@ a {
 }
 
 .auth-box {
-  width: min(100%, 646px);
+  width: min(100%, 560px);
   margin: 0 auto;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 30px;
@@ -8411,7 +8411,7 @@ a {
 }
 
 .auth-box-inner {
-  padding: 34px 26px 30px;
+  padding: 24px 20px 22px;
 }
 
 .auth-box-inner-methods {
@@ -8427,21 +8427,21 @@ a {
 .auth-back-link {
   display: inline-flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   width: 100%;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
   color: #7d7981;
   font-family:
     ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  font-size: 1.52rem;
+  font-size: 1.08rem;
   line-height: 1;
   text-transform: lowercase;
 }
 
 .auth-back-icon {
-  width: 1.78rem;
-  height: 1.78rem;
+  width: 1.2rem;
+  height: 1.2rem;
   flex: none;
 }
 
@@ -8451,11 +8451,11 @@ a {
   width: 100%;
   align-items: center;
   justify-content: center;
-  gap: 22px;
-  min-height: 94px;
-  padding: 0 26px;
-  border-radius: 24px;
-  font-size: 1.52rem;
+  gap: 16px;
+  min-height: 70px;
+  padding: 0 20px;
+  border-radius: 18px;
+  font-size: 1.14rem;
   line-height: 1.2;
   text-decoration: none;
   text-transform: lowercase;
@@ -8478,8 +8478,8 @@ a {
 }
 
 .auth-google-mark-svg {
-  width: 2.18rem;
-  height: 2.18rem;
+  width: 1.52rem;
+  height: 1.52rem;
   flex: none;
 }
 
@@ -8487,8 +8487,8 @@ a {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 18px;
-  margin: 30px 0 28px;
+  gap: 14px;
+  margin: 22px 0 20px;
 }
 
 .auth-divider-line {
@@ -8502,7 +8502,7 @@ a {
   font-family:
     ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  font-size: 0.96rem;
+  font-size: 0.82rem;
   text-transform: lowercase;
 }
 
@@ -8525,11 +8525,11 @@ a {
 }
 
 .auth-switch-row {
-  margin-top: 40px;
-  padding-top: 34px;
+  margin-top: 24px;
+  padding-top: 22px;
   border-top: 1px solid #313139;
   color: #6d6b74;
-  font-size: 1.56rem;
+  font-size: 1.08rem;
 }
 
 .auth-switch-row-form {
@@ -8551,9 +8551,9 @@ a {
 }
 
 .auth-legal {
-  margin: 36px 0 0;
+  margin: 24px 0 0;
   color: #65636d;
-  font-size: 1.24rem;
+  font-size: 0.98rem;
 }
 
 .auth-stage-footer {
@@ -8658,7 +8658,7 @@ a {
 .auth-captcha-slot {
   display: flex;
   justify-content: center;
-  margin-top: 24px;
+  margin-top: 18px;
 }
 
 .auth-form-field {
@@ -8667,33 +8667,33 @@ a {
 }
 
 .auth-form-field + .auth-form-field {
-  margin-top: 28px;
+  margin-top: 20px;
 }
 
 .auth-form-label {
   display: block;
-  margin-bottom: 15px;
+  margin-bottom: 10px;
   color: #84808b;
   font-family:
     ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  font-size: 1.48rem;
+  font-size: 1rem;
   line-height: 1;
   text-transform: lowercase;
 }
 
 .auth-form-input {
   width: 100%;
-  min-height: 80px;
-  padding: 0 30px;
+  min-height: 62px;
+  padding: 0 20px;
   border: 1px solid transparent;
-  border-radius: 22px;
+  border-radius: 18px;
   background: #2d2d31;
   color: #f3f0f1;
   font-family:
     ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  font-size: 1.64rem;
+  font-size: 1.12rem;
   line-height: 1;
   outline: none;
   transition:
@@ -8712,16 +8712,16 @@ a {
 
 .auth-form-submit {
   width: 100%;
-  min-height: 80px;
-  margin-top: 32px;
+  min-height: 62px;
+  margin-top: 24px;
   border: 0;
-  border-radius: 22px;
+  border-radius: 18px;
   background: #4f4d58;
   color: #9f9aa6;
   font-family:
     ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  font-size: 1.7rem;
+  font-size: 1.16rem;
   line-height: 1;
   text-transform: lowercase;
   cursor: pointer;
@@ -8744,13 +8744,13 @@ a {
 .auth-form-note,
 .auth-verify-copy,
 .auth-callback-copy {
-  margin: 28px 0 0;
+  margin: 20px 0 0;
   color: #7d7981;
   text-align: center;
   font-family:
     ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  font-size: 1.32rem;
+  font-size: 0.96rem;
   line-height: 1.55;
   text-transform: lowercase;
 }
