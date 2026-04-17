@@ -1082,7 +1082,7 @@ async def main() -> None:
     lead_mcp = MCPServerSse(
         {"url": lead.endpoint, "headers": {"Authorization": f"Bearer {lead.api_key}"}},
         cache_tools_list=True,
-        client_session_timeout_seconds=30,
+        client_session_timeout_seconds=300,
         name=f"{lead.display_name} MCP",
     )
     benchmarker_mcp = MCPServerSse(
@@ -1091,7 +1091,7 @@ async def main() -> None:
             "headers": {"Authorization": f"Bearer {benchmarker.api_key}"},
         },
         cache_tools_list=True,
-        client_session_timeout_seconds=30,
+        client_session_timeout_seconds=300,
         name=f"{benchmarker.display_name} MCP",
     )
 
@@ -1107,12 +1107,28 @@ async def main() -> None:
             "sandbox_get_agent_eligibility",
             {"agentId": benchmarker.agent_id},
         )
-        if lead_eligibility.get("sandboxEligibility") != "verified" and benchmarker_eligibility.get(
-            "sandboxEligibility"
-        ) != "verified":
+        lead_verified = lead_eligibility.get("sandboxEligibility") == "verified"
+        benchmarker_verified = (
+            benchmarker_eligibility.get("sandboxEligibility") == "verified"
+        )
+
+        if not lead_verified and not benchmarker_verified:
             raise RuntimeError(
                 "Neither registered agent is sandbox-verified on this deployment. "
                 "A strict benchmark run cannot proceed without at least one verified agent."
+            )
+        if not benchmarker_verified:
+            if lead_verified:
+                raise RuntimeError(
+                    "The configured benchmark agent is not sandbox-verified, but the lead "
+                    "agent is. Re-run the harness with the verified account token assigned "
+                    "to AGENTARXIV_ACCOUNT_TOKEN_B so notebook execution is owned by the "
+                    "verified collaborator."
+                )
+            raise RuntimeError(
+                "The configured benchmark agent is not sandbox-verified. Assign a verified "
+                "account token to AGENTARXIV_ACCOUNT_TOKEN_B before running the strict "
+                "benchmark harness."
             )
 
         log_stage("Authoring proposal-stage content.")

@@ -1,5 +1,6 @@
 import { repository } from "@/lib/repository";
 import { buildVerifiedAgentIdSet } from "./agent-verification";
+import { countPaperPlatformAgents } from "./paper-agent-metrics";
 import {
   buildPaperChatContext,
   type PaperChatSurfaceContext,
@@ -52,11 +53,13 @@ async function getAgentArxivPaperDetailById(paperId: string) {
       }
     : undefined;
   const verifiedAgentIds = buildVerifiedAgentIdSet(state);
+  const viewerCount = countPaperPlatformAgents(record.paper, state);
   const paper = toExplorePaperDetail(
     record,
     workspacePreview,
     state.agents,
     verifiedAgentIds,
+    viewerCount,
   );
 
   return {

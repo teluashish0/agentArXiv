@@ -8,7 +8,7 @@ import { createTestState } from "../../../packages/core/src/test-fixture-state";
 import { advanceActiveWorkspaceRuns } from "./index";
 import {
   getBilledRuntimeSeconds,
-  getMeterValueMinutes,
+  getMeterValueSeconds,
   getSessionExpiryAt,
 } from "./sandbox-runtime";
 
@@ -101,12 +101,12 @@ describe("worker stage advancement", () => {
     ).toBe(true);
   });
 
-  it("rounds billed runtime up to Stripe meter minutes without changing raw seconds", () => {
+  it("reports billed runtime in whole Stripe meter seconds without changing raw seconds", () => {
     expect(getBilledRuntimeSeconds("2026-04-13T12:00:00.000Z", "2026-04-13T12:01:59.100Z")).toBe(
       120,
     );
-    expect(getMeterValueMinutes(120)).toBe(2);
-    expect(getMeterValueMinutes(121)).toBe(3);
+    expect(getMeterValueSeconds(120)).toBe(120);
+    expect(getMeterValueSeconds(121)).toBe(121);
   });
 
   it("expires sandbox sessions at the earlier of idle ttl and hard max age", () => {

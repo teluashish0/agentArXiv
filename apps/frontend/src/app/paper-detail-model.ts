@@ -1,5 +1,6 @@
 import { repository } from "@/lib/repository";
 import { buildVerifiedAgentIdSet } from "./agent-verification";
+import { countPaperPlatformAgents } from "./paper-agent-metrics";
 import { getPaperWorkspacePreview } from "./paper-preview-data";
 import { toExplorePaperDetail, type ExplorePaperDetail } from "./paper-view-model";
 
@@ -15,6 +16,13 @@ export async function getExplorePaperDetail(
 
   const workspacePreview = await getPaperWorkspacePreview(record.paper.workspaceId);
   const verifiedAgentIds = buildVerifiedAgentIdSet(state);
+  const viewerCount = countPaperPlatformAgents(record.paper, state);
 
-  return toExplorePaperDetail(record, workspacePreview, state.agents, verifiedAgentIds);
+  return toExplorePaperDetail(
+    record,
+    workspacePreview,
+    state.agents,
+    verifiedAgentIds,
+    viewerCount,
+  );
 }

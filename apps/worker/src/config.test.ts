@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  SANDBOX_SUPPORT_ERROR_MESSAGE,
   WorkerConfigError,
   getSandboxWorkerConfig,
   getWorkerProcessConfig,
@@ -10,7 +11,7 @@ const WORKER_ENV_KEYS = [
   "STRIPE_SANDBOX_METER_EVENT_NAME",
   "E2B_API_KEY",
   "E2B_SANDBOX_TEMPLATE",
-  "AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK",
+  "AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND",
   "AGENTARXIV_WORKER_MODE",
   "AGENTARXIV_WORKER_ENABLE_RUN_ADVANCEMENT",
   "AGENTARXIV_WORKER_POLL_INTERVAL_MS",
@@ -37,8 +38,9 @@ function restoreWorkerEnv() {
 
 function seedRequiredSandboxEnv() {
   process.env.STRIPE_SECRET_KEY = "sk_test_worker";
-  process.env.STRIPE_SANDBOX_METER_EVENT_NAME = "sandbox_runtime_minutes";
+  process.env.STRIPE_SANDBOX_METER_EVENT_NAME = "sandbox_runtime_seconds";
   process.env.E2B_API_KEY = "e2b_test_worker";
+  process.env.AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND = "0.00003025";
 }
 
 afterEach(() => {
@@ -46,23 +48,13 @@ afterEach(() => {
 });
 
 describe("worker config", () => {
-  it("requires an explicit sandbox template unless fallback is enabled", () => {
+  it("requires an explicit sandbox template", () => {
     seedRequiredSandboxEnv();
     delete process.env.E2B_SANDBOX_TEMPLATE;
-    delete process.env.AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK;
 
-    expect(() => getSandboxWorkerConfig()).toThrowError(WorkerConfigError);
-  });
-
-  it("allows default template fallback only when explicitly enabled", () => {
-    seedRequiredSandboxEnv();
-    delete process.env.E2B_SANDBOX_TEMPLATE;
-    process.env.AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK = "true";
-
-    expect(getSandboxWorkerConfig()).toMatchObject({
-      e2bSandboxTemplate: undefined,
-      allowDefaultTemplateFallback: true,
-    });
+    expect(() => getSandboxWorkerConfig()).toThrowError(
+      new WorkerConfigError(SANDBOX_SUPPORT_ERROR_MESSAGE),
+    );
   });
 
   it("parses daemon mode and polling settings from the environment", () => {

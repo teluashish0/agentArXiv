@@ -1,4 +1,8 @@
 import Stripe from "stripe";
+import {
+  SandboxUsageBillingConfigError,
+  getSandboxUsageBillingConfig,
+} from "@agentarxiv/core";
 
 const STRIPE_SANDBOX_API_VERSION = "2026-02-25.clover";
 export const SANDBOX_SESSION_IDLE_TTL_MINUTES = 15;
@@ -7,6 +11,8 @@ const DEFAULT_WORKER_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_WORKER_ERROR_BACKOFF_MS = 10_000;
 const DEFAULT_WORKER_RETRY_DELAY_MS = 500;
 const DEFAULT_WORKER_MAX_CYCLE_RETRIES = 3;
+export const SANDBOX_SUPPORT_ERROR_MESSAGE =
+  "Error! Please contact teluashish@gmail.com for support.";
 
 export class WorkerConfigError extends Error {
   constructor(message: string) {
@@ -104,16 +110,22 @@ export function getWorkerProcessConfig() {
 }
 
 export function getSandboxWorkerConfig() {
-  const e2bSandboxTemplate = process.env.E2B_SANDBOX_TEMPLATE?.trim() || undefined;
-  const allowDefaultTemplateFallback = parseBooleanEnv(
-    "AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK",
-    false,
-  );
+  const e2bSandboxTemplate = process.env.E2B_SANDBOX_TEMPLATE?.trim();
 
-  if (!e2bSandboxTemplate && !allowDefaultTemplateFallback) {
-    throw new WorkerConfigError(
-      "E2B_SANDBOX_TEMPLATE is required for sandbox worker execution unless AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK=true.",
-    );
+  if (!e2bSandboxTemplate) {
+    throw new WorkerConfigError(SANDBOX_SUPPORT_ERROR_MESSAGE);
+  }
+
+  let usageBillingConfig;
+
+  try {
+    usageBillingConfig = getSandboxUsageBillingConfig();
+  } catch (error) {
+    if (error instanceof SandboxUsageBillingConfigError) {
+      throw new WorkerConfigError(error.message);
+    }
+
+    throw error;
   }
 
   return {
@@ -125,9 +137,10 @@ export function getSandboxWorkerConfig() {
     ),
     e2bApiKey: requireEnv("E2B_API_KEY", "sandbox worker execution"),
     e2bSandboxTemplate,
-    allowDefaultTemplateFallback,
     sessionIdleTtlMinutes: SANDBOX_SESSION_IDLE_TTL_MINUTES,
     sessionMaxAgeMinutes: SANDBOX_SESSION_MAX_AGE_MINUTES,
+    sandboxUsagePriceUsdPerSecond:
+      usageBillingConfig.usagePriceUsdPerSecond,
   };
 }
 

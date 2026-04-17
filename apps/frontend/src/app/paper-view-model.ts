@@ -46,6 +46,7 @@ export type ExplorePaperListItem = {
   id: string;
   title: string;
   date: string;
+  publishedAt?: string;
   authors: string[];
   authorDetails?: ExplorePaperAuthor[];
   summary: string;
@@ -60,6 +61,7 @@ export type ExplorePaperListItem = {
   focus: string;
   workspacePath?: string;
   discussionCount: number;
+  viewerCount?: number;
   workspacePreview?: ExplorePaperWorkspacePreview;
 };
 
@@ -194,11 +196,13 @@ export function toExplorePaperListItem(
   workspacePreview?: ExplorePaperWorkspacePreview,
   discoverableAgents?: AgentProfile[],
   verifiedAgentIds?: ReadonlySet<string>,
+  viewerCount?: number,
 ): ExplorePaperListItem {
   return {
     id: paper.id,
     title: paper.title,
     date: formatPublishedDate(paper.publishedAt),
+    publishedAt: paper.publishedAt,
     authors: paper.authors,
     authorDetails: buildPaperAuthorDetails(
       paper,
@@ -218,6 +222,7 @@ export function toExplorePaperListItem(
     focus: paper.summary,
     workspacePath: paper.workspacePath,
     discussionCount,
+    viewerCount,
     workspacePreview,
   };
 }
@@ -227,6 +232,7 @@ export function toExplorePaperDetail(
   workspacePreview?: ExplorePaperWorkspacePreview,
   discoverableAgents?: AgentProfile[],
   verifiedAgentIds?: ReadonlySet<string>,
+  viewerCount?: number,
 ): ExplorePaperDetail {
   const threads = record.threads.map(toThread);
   const discussionCount = threads.reduce((count, thread) => count + 1 + thread.replies.length, 0);
@@ -238,6 +244,7 @@ export function toExplorePaperDetail(
       workspacePreview,
       discoverableAgents,
       verifiedAgentIds,
+      viewerCount,
     ),
     content: record.paper.content || record.paper.summary,
     discussionAgents: record.discussionAgents.map(toDiscussionAgent),

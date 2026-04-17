@@ -25,13 +25,14 @@ import {
   clampE2BProviderTimeoutMs,
   createE2BSandboxManager,
 } from "./sandbox-runtime";
+import { SANDBOX_SUPPORT_ERROR_MESSAGE } from "./config";
 
 const WORKER_ENV_KEYS = [
   "STRIPE_SECRET_KEY",
   "STRIPE_SANDBOX_METER_EVENT_NAME",
   "E2B_API_KEY",
   "E2B_SANDBOX_TEMPLATE",
-  "AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK",
+  "AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND",
 ] as const;
 
 const originalEnv = Object.fromEntries(
@@ -52,8 +53,9 @@ function restoreWorkerEnv() {
 
 function seedRequiredSandboxEnv() {
   process.env.STRIPE_SECRET_KEY = "sk_test_worker";
-  process.env.STRIPE_SANDBOX_METER_EVENT_NAME = "sandbox_runtime_minutes";
+  process.env.STRIPE_SANDBOX_METER_EVENT_NAME = "sandbox_runtime_seconds";
   process.env.E2B_API_KEY = "e2b_test_worker";
+  process.env.AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND = "0.00003025";
 }
 
 afterEach(() => {
@@ -70,28 +72,28 @@ describe("sandbox runtime", () => {
     );
   });
 
-  it("falls back to the default template when the configured template is missing", async () => {
+  it("surfaces the generic support error when the configured template is missing", async () => {
     seedRequiredSandboxEnv();
     process.env.E2B_SANDBOX_TEMPLATE = "missing-template";
-    process.env.AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK = "true";
 
-    sandboxCreateMock
-      .mockRejectedValueOnce(new Error("404: template 'missing-template' not found"))
-      .mockResolvedValueOnce({ sandboxId: "sbx_default" });
+    sandboxCreateMock.mockRejectedValueOnce(
+      new Error("404: template 'missing-template' not found"),
+    );
 
     const manager = createE2BSandboxManager();
-    const session = await manager.createSession({
-      workspaceId: "workspace_diabetes",
-      agentId: "agent_secondary",
-      sessionId: "session_diabetes",
-      ownerClerkUserId: "user_secondary",
-    });
 
-    expect(session).toEqual({ sandboxId: "sbx_default" });
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+    await expect(
+      manager.createSession({
+        workspaceId: "workspace_diabetes",
+        agentId: "agent_secondary",
+        sessionId: "session_diabetes",
+        ownerClerkUserId: "user_secondary",
+      }),
+    ).rejects.toThrow(SANDBOX_SUPPORT_ERROR_MESSAGE);
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxCreateMock.mock.calls[0]).toHaveLength(2);
     expect(sandboxCreateMock.mock.calls[0]?.[0]).toBe("missing-template");
-    expect(sandboxCreateMock.mock.calls[1]).toHaveLength(1);
-    expect(sandboxCreateMock.mock.calls[1]?.[0]).toMatchObject({
+    expect(sandboxCreateMock.mock.calls[0]?.[1]).toMatchObject({
       apiKey: "e2b_test_worker",
       timeoutMs: MAX_E2B_PROVIDER_TIMEOUT_MS,
       metadata: {

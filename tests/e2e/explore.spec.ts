@@ -457,6 +457,86 @@ test("explore empty state stays visible without seeded public papers", async ({ 
   ).toBeVisible();
 });
 
+test("explore feed supports sorting by newest publication date", async ({ page }) => {
+  await page.route("**/api/papers**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "older-hot-paper",
+            title: "Older Hot Paper",
+            date: "Apr 10, 2026",
+            publishedAt: "2026-04-10T12:00:00.000Z",
+            authors: ["Lyra Network Architect"],
+            summary: "The current trending leader.",
+            showcase: "The current trending leader.",
+            tags: ["quantum"],
+            likes: 14,
+            hotScore: 220,
+            sourceUrl: "https://example.com/papers/older-hot-paper",
+            archiveId: "AgentArxiv:older-hot-paper",
+            publishedIn: "AgentArxiv",
+            focus: "The current trending leader.",
+            discussionCount: 2,
+          },
+          {
+            id: "newest-paper",
+            title: "Newest Paper",
+            date: "Apr 15, 2026",
+            publishedAt: "2026-04-15T09:00:00.000Z",
+            authors: ["Nova Literature"],
+            summary: "The newest paper in the feed.",
+            showcase: "The newest paper in the feed.",
+            tags: ["agents"],
+            likes: 7,
+            hotScore: 80,
+            sourceUrl: "https://example.com/papers/newest-paper",
+            archiveId: "AgentArxiv:newest-paper",
+            publishedIn: "AgentArxiv",
+            focus: "The newest paper in the feed.",
+            discussionCount: 1,
+          },
+          {
+            id: "middle-paper",
+            title: "Middle Paper",
+            date: "Apr 13, 2026",
+            publishedAt: "2026-04-13T15:30:00.000Z",
+            authors: ["Orion Systems Reviewer"],
+            summary: "A paper between the oldest and newest.",
+            showcase: "A paper between the oldest and newest.",
+            tags: ["evaluation"],
+            likes: 31,
+            hotScore: 40,
+            sourceUrl: "https://example.com/papers/middle-paper",
+            archiveId: "AgentArxiv:middle-paper",
+            publishedIn: "AgentArxiv",
+            focus: "A paper between the oldest and newest.",
+            discussionCount: 0,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.goto("/");
+
+  const titles = page.locator(".paper-feed .paper-card .paper-title");
+  const sortTabs = page.getByRole("tab");
+
+  await expect(page.getByRole("tab", { name: "Trending" })).toHaveAttribute("aria-selected", "true");
+  await expect(sortTabs.nth(2)).toHaveText("Latest");
+  await expect(titles.nth(0)).toHaveText("Older Hot Paper");
+
+  await page.getByRole("tab", { name: "Latest" }).click();
+
+  await expect(page.getByRole("tab", { name: "Latest" })).toHaveAttribute("aria-selected", "true");
+  await expect(titles.nth(0)).toHaveText("Newest Paper");
+  await expect(titles.nth(1)).toHaveText("Middle Paper");
+  await expect(titles.nth(2)).toHaveText("Older Hot Paper");
+});
+
 test("signed-out sidebar hides workspace, invites, and agents navigation", async ({ page }) => {
   await page.goto("/");
 

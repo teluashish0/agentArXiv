@@ -79,6 +79,12 @@ model AccountBillingStatus {
   planName             String?
   planLookupKey        String?
   planMetadata         Json
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  sandboxUsageBudgetCents Int?
+  cancelAt             DateTime?
+  cancelAtPeriodEnd    Boolean?
+  canceledAt           DateTime?
   delinquentAt         DateTime?
   lastWebhookAt        DateTime?
   createdAt            DateTime
@@ -268,6 +274,9 @@ model SandboxUsageLedger {
   stripeMeterEventIdentifier String @unique
   meterValue            Int
   runtimeSeconds        Int
+  estimatedCostMicrocents Int?
+  sandboxCpuCount       Int?
+  sandboxMemoryMb       Int?
   status                String
   createdAt             DateTime
   reportedAt            DateTime?

@@ -8,6 +8,8 @@ import {
   assignWorkspacePaperAuthorAccents,
   buildPaperPreviewDataUri,
   buildPaperShowcaseText,
+  calculateSandboxUsageCostMicrocents,
+  estimateSandboxSessionAdditionalReservationSeconds,
   breakdownReasons,
   claimSectionInputSchema,
   createSandboxExecutionInputSchema,
@@ -25,12 +27,17 @@ import {
   executeSkillInputSchema,
   FileStoreRepository,
   generateManuscriptAssetInputSchema,
+  getSandboxUsageBillingConfig,
   getWorkspaceNotebookCellSource,
   getWorkspaceNotebookInputSchema,
   heartbeatWorkspaceNotebookLeaseInputSchema,
   installSkillInputSchema,
   linkWorkspaceEvidenceInputSchema,
+  isSandboxBillingBlocked,
+  isSandboxBillingVerified,
   listSandboxExecutionsInputSchema,
+  listSandboxSessionsInputSchema,
+  listSandboxUsageLedgerInputSchema,
   listDelegatedTasksInputSchema,
   listInvitesInputSchema,
   listWorkspaceNotebookActivityInputSchema,
@@ -46,6 +53,7 @@ import {
   inspectWorkspaceManuscriptInputSchema,
   saveWorkspaceNotebookInputSchema,
   sendInviteInputSchema,
+  summarizeAccountSandboxUsage,
   sortAgentMatches,
   sortWorkspaceMatches,
   submitCitationCandidatesInputSchema,
@@ -1101,7 +1109,13 @@ class PrismaRuntimeRepository {
   private readonly prisma = getPrisma();
 
   getRegistrationEndpoint() {
-    return process.env.AGENTARXIV_MCP_ENDPOINT ?? "http://localhost:4001/mcp";
+    const endpoint = process.env.AGENTARXIV_MCP_ENDPOINT?.trim();
+
+    if (!endpoint) {
+      throw new Error("AGENTARXIV_MCP_ENDPOINT is required");
+    }
+
+    return endpoint;
   }
 
   private hashSecret(value: string) {
@@ -1808,13 +1822,8 @@ class PrismaRuntimeRepository {
       };
     }
 
-    const verified =
-      billingStatus.billingState === "active" &&
-      billingStatus.sandboxEligibility === "verified";
-    const blocked =
-      billingStatus.billingState === "past_due" ||
-      billingStatus.billingState === "unpaid" ||
-      billingStatus.sandboxEligibility === "blocked";
+    const verified = isSandboxBillingVerified(billingStatus);
+    const blocked = isSandboxBillingBlocked(billingStatus);
 
     return {
       agentId: agent.id,
@@ -1995,6 +2004,42 @@ class PrismaRuntimeRepository {
     ) {
       throw new Error(
         "The paid profile has reached its sandbox runtime cap for this workspace.",
+      );
+    }
+
+    const billingStatus = this.findAccountBillingStatus(state, ownerClerkUserId);
+    const usageBillingConfig = getSandboxUsageBillingConfig();
+    const asOf = new Date().toISOString();
+    const usageSummary = summarizeAccountSandboxUsage({
+      ownerClerkUserId,
+      asOf,
+      billingStatus,
+      sessions: state.sandboxSessions,
+      executions: state.sandboxExecutions,
+      usageLedger: state.sandboxUsageLedger,
+      usagePriceUsdPerSecond: usageBillingConfig.usagePriceUsdPerSecond,
+      defaultBudgetCents: usageBillingConfig.defaultBudgetCents,
+    });
+    const existingSession = state.sandboxSessions.find(
+      (session) =>
+        session.workspaceId === input.workspaceId && session.agentId === input.agentId,
+    );
+    const requestedUsageMicrocents = calculateSandboxUsageCostMicrocents({
+      runtimeSeconds: estimateSandboxSessionAdditionalReservationSeconds({
+        timeoutSeconds: input.timeoutSeconds ?? 900,
+        asOf,
+        session: existingSession,
+      }),
+      usagePriceUsdPerSecond: usageBillingConfig.usagePriceUsdPerSecond,
+    });
+
+    if (
+      usageSummary.budgetLimitCents !== undefined &&
+      usageSummary.projectedUsageMicrocents + requestedUsageMicrocents >
+        usageSummary.budgetLimitCents * 1_000_000
+    ) {
+      throw new Error(
+        "This sandbox run would exceed the account's on-demand sandbox budget limit. Increase the limit from the account page or lower the execution timeout.",
       );
     }
   }
@@ -5440,6 +5485,16 @@ class PrismaRuntimeRepository {
           planName: parsed.planName,
           planLookupKey: parsed.planLookupKey,
           planMetadata: parsed.planMetadata,
+          currentPeriodStart: parsed.currentPeriodStart
+            ? new Date(parsed.currentPeriodStart)
+            : null,
+          currentPeriodEnd: parsed.currentPeriodEnd
+            ? new Date(parsed.currentPeriodEnd)
+            : null,
+          sandboxUsageBudgetCents: parsed.sandboxUsageBudgetCents ?? null,
+          cancelAt: parsed.cancelAt ? new Date(parsed.cancelAt) : null,
+          cancelAtPeriodEnd: parsed.cancelAtPeriodEnd,
+          canceledAt: parsed.canceledAt ? new Date(parsed.canceledAt) : null,
           delinquentAt: parsed.delinquentAt ? new Date(parsed.delinquentAt) : null,
           lastWebhookAt: parsed.lastWebhookAt ? new Date(parsed.lastWebhookAt) : null,
           createdAt: new Date(now),
@@ -5455,6 +5510,16 @@ class PrismaRuntimeRepository {
           planName: parsed.planName,
           planLookupKey: parsed.planLookupKey,
           planMetadata: parsed.planMetadata,
+          currentPeriodStart: parsed.currentPeriodStart
+            ? new Date(parsed.currentPeriodStart)
+            : null,
+          currentPeriodEnd: parsed.currentPeriodEnd
+            ? new Date(parsed.currentPeriodEnd)
+            : null,
+          sandboxUsageBudgetCents: parsed.sandboxUsageBudgetCents ?? null,
+          cancelAt: parsed.cancelAt ? new Date(parsed.cancelAt) : null,
+          cancelAtPeriodEnd: parsed.cancelAtPeriodEnd,
+          canceledAt: parsed.canceledAt ? new Date(parsed.canceledAt) : null,
           delinquentAt: parsed.delinquentAt ? new Date(parsed.delinquentAt) : null,
           lastWebhookAt: parsed.lastWebhookAt ? new Date(parsed.lastWebhookAt) : null,
           updatedAt: new Date(now),
@@ -5499,7 +5564,61 @@ class PrismaRuntimeRepository {
       .filter(
         (execution) => !parsed.agentId || execution.agentId === parsed.agentId,
       )
+      .filter(
+        (execution) =>
+          !parsed.ownerClerkUserId ||
+          execution.ownerClerkUserId === parsed.ownerClerkUserId,
+      )
       .filter((execution) => !parsed.status || execution.status === parsed.status)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async listSandboxSessions(filters?: unknown) {
+    const parsed = listSandboxSessionsInputSchema.parse(filters ?? {});
+    const state = await this.loadState();
+
+    return state.sandboxSessions
+      .filter(
+        (session) =>
+          !parsed.workspaceId || session.workspaceId === parsed.workspaceId,
+      )
+      .filter((session) => !parsed.agentId || session.agentId === parsed.agentId)
+      .filter(
+        (session) =>
+          !parsed.ownerClerkUserId ||
+          session.ownerClerkUserId === parsed.ownerClerkUserId,
+      )
+      .filter((session) => !parsed.status || session.status === parsed.status)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async listSandboxUsageLedger(filters?: unknown) {
+    const parsed = listSandboxUsageLedgerInputSchema.parse(filters ?? {});
+    const state = await this.loadState();
+
+    return state.sandboxUsageLedger
+      .filter(
+        (entry) =>
+          !parsed.ownerClerkUserId ||
+          entry.ownerClerkUserId === parsed.ownerClerkUserId,
+      )
+      .filter(
+        (entry) =>
+          !parsed.stripeCustomerId ||
+          entry.stripeCustomerId === parsed.stripeCustomerId,
+      )
+      .filter(
+        (entry) =>
+          !parsed.createdAfter ||
+          new Date(entry.createdAt).getTime() >=
+            new Date(parsed.createdAfter).getTime(),
+      )
+      .filter(
+        (entry) =>
+          !parsed.createdBefore ||
+          new Date(entry.createdAt).getTime() <
+            new Date(parsed.createdBefore).getTime(),
+      )
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
@@ -5949,6 +6068,11 @@ class PrismaRuntimeRepository {
         await tx.sandboxUsageLedger.update({
           where: { id: existing.id },
           data: {
+            meterValue: input.meterValue,
+            runtimeSeconds: input.runtimeSeconds,
+            estimatedCostMicrocents: input.estimatedCostMicrocents,
+            sandboxCpuCount: input.sandboxCpuCount,
+            sandboxMemoryMb: input.sandboxMemoryMb,
             status: input.status,
             reportedAt: input.reportedAt ? new Date(input.reportedAt) : null,
           },
@@ -5966,6 +6090,9 @@ class PrismaRuntimeRepository {
           stripeMeterEventIdentifier: input.stripeMeterEventIdentifier,
           meterValue: input.meterValue,
           runtimeSeconds: input.runtimeSeconds,
+          estimatedCostMicrocents: input.estimatedCostMicrocents,
+          sandboxCpuCount: input.sandboxCpuCount,
+          sandboxMemoryMb: input.sandboxMemoryMb,
           status: input.status,
           createdAt: new Date(input.createdAt ?? new Date().toISOString()),
           reportedAt: input.reportedAt ? new Date(input.reportedAt) : null,

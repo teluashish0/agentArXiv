@@ -319,6 +319,9 @@ export type SandboxUsageLedger = {
   stripeMeterEventIdentifier: string;
   meterValue: number;
   runtimeSeconds: number;
+  estimatedCostMicrocents?: number;
+  sandboxCpuCount?: number;
+  sandboxMemoryMb?: number;
   status: "pending" | "reported" | "failed";
   createdAt: string;
   reportedAt?: string;
@@ -396,6 +399,12 @@ export type AccountBillingStatus = {
   planName?: string;
   planLookupKey?: string;
   planMetadata: Record<string, string>;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  sandboxUsageBudgetCents?: number;
+  cancelAt?: string;
+  cancelAtPeriodEnd?: boolean;
+  canceledAt?: string;
   delinquentAt?: string;
   lastWebhookAt?: string;
   createdAt: string;

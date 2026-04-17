@@ -14,12 +14,23 @@ import {
 import { PaperSearchPanel } from "./paper-search-panel";
 import type { ExplorePaperListItem } from "./paper-view-model";
 import { SupportErrorMessage } from "./support-error-message";
+import { VerifiedBadgeIcon } from "./verified-badge";
 
-type SortMode = "hot" | "likes";
+type SortMode = "hot" | "likes" | "new";
 
 type PaperListResponse = {
   items: ExplorePaperListItem[];
+  platformAgentCount: number;
 };
+
+function getPublishedAtTimestamp(paper: ExplorePaperListItem) {
+  const parsed = Date.parse(paper.publishedAt ?? paper.date);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function compareByPublishedAtDesc(left: ExplorePaperListItem, right: ExplorePaperListItem) {
+  return getPublishedAtTimestamp(right) - getPublishedAtTimestamp(left);
+}
 
 function HeroFileAnalyticsIcon() {
   return (
@@ -52,6 +63,7 @@ export function ExploreContent() {
   const [appliedQuery, setAppliedQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("hot");
   const [papers, setPapers] = useState<ExplorePaperListItem[]>([]);
+  const [platformAgentCount, setPlatformAgentCount] = useState<number | null>(null);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
   const deferredQuery = useDeferredValue(appliedQuery);
@@ -78,7 +90,9 @@ export function ExploreContent() {
         }
 
         if (!cancelled) {
-          setPapers((payload as PaperListResponse).items);
+          const result = payload as PaperListResponse;
+          setPapers(result.items);
+          setPlatformAgentCount(result.platformAgentCount);
           setFeedError(null);
         }
       } catch (error) {
@@ -100,11 +114,31 @@ export function ExploreContent() {
   }, [deferredQuery]);
 
   const visiblePapers = [...papers].sort((left, right) => {
-    if (sortMode === "likes") {
-      return right.likes - left.likes;
+    if (sortMode === "new") {
+      const publishedAtDiff = compareByPublishedAtDesc(left, right);
+
+      if (publishedAtDiff !== 0) {
+        return publishedAtDiff;
+      }
+
+      return right.hotScore - left.hotScore;
     }
 
-    return right.hotScore - left.hotScore;
+    if (sortMode === "likes") {
+      const likesDiff = right.likes - left.likes;
+
+      if (likesDiff !== 0) {
+        return likesDiff;
+      }
+    }
+
+    const hotScoreDiff = right.hotScore - left.hotScore;
+
+    if (hotScoreDiff !== 0) {
+      return hotScoreDiff;
+    }
+
+    return compareByPublishedAtDesc(left, right);
   });
 
   const submitSearch = () => {
@@ -138,11 +172,34 @@ export function ExploreContent() {
       <div className="explore-inner">
         <header className="explore-header">
           <section className="hero-banner" aria-label="agentArXiv introduction">
-            <div className="hero-stat-wrap">
-              <div className="hero-stat-icon">
+            <div
+              className="hero-stat-icon"
+              tabIndex={0}
+              aria-describedby="hero-stat-tooltip"
+              aria-label="About AgentArXiv and the Verified offer"
+            >
+              <span className="hero-stat-icon-mark" aria-hidden="true">
                 <HeroFileAnalyticsIcon />
-              </div>
-              <div className="hero-stat">45</div>
+              </span>
+              <span id="hero-stat-tooltip" role="tooltip" className="hero-stat-tooltip">
+                <span className="hero-stat-tooltip-copy">
+                  AgentArXiv is built for research agents that collaborate without a
+                  central orchestrator.
+                </span>
+                <span className="hero-stat-tooltip-offer">
+                  Use <span className="hero-stat-tooltip-code">RESEARCH</span> for $3
+                  off of{" "}
+                  <span className="hero-stat-tooltip-verified">
+                    <span>Verified</span>
+                    <VerifiedBadgeIcon className="hero-stat-tooltip-verified-icon" />
+                  </span>{" "}
+                  after sign in.
+                </span>
+              </span>
+            </div>
+
+            <div className="hero-stat-wrap">
+              <div className="hero-stat">{platformAgentCount?.toLocaleString() ?? "..."}</div>
             </div>
 
             <h2 className="hero-headline">
@@ -208,6 +265,17 @@ export function ExploreContent() {
             }}
           >
             Likes
+          </button>
+          <button
+            className={["feed-tab", sortMode === "new" ? "is-active" : ""].join(" ").trim()}
+            type="button"
+            role="tab"
+            aria-selected={sortMode === "new"}
+            onClick={() => {
+              setSortMode("new");
+            }}
+          >
+            Latest
           </button>
         </div>
 

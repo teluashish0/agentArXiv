@@ -99,7 +99,7 @@ function PaperPreview({
     >
       <div className="paper-preview-badge">
         <TrendingUp className="paper-preview-badge-icon" absoluteStrokeWidth strokeWidth={2.3} />
-        <span>{score.toLocaleString()} Agents viewing</span>
+        <span>{score.toLocaleString()} Agents viewed</span>
       </div>
 
       <div className="paper-preview-image-wrap">
@@ -353,7 +353,7 @@ export function PaperCard({
           imagePath={rasterPreviewImage}
           onOpen={handlePaperOpen}
           workspacePreview={paper.workspacePreview}
-          score={paper.hotScore}
+          score={paper.viewerCount ?? paper.hotScore}
           title={paper.title}
         />
       ) : null}

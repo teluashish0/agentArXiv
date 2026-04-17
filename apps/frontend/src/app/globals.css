@@ -362,13 +362,14 @@ button {
 
 .hero-banner {
   --hero-inline-padding: clamp(52px, 6.3vw, 104px);
+  --hero-top-padding: clamp(74px, 7.4vw, 112px);
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   width: 100%;
-  padding: clamp(74px, 7.4vw, 112px) var(--hero-inline-padding)
-    clamp(24px, 2.8vw, 40px);
+  padding: var(--hero-top-padding) var(--hero-inline-padding) clamp(24px, 2.8vw, 40px);
 }
 
 .hero-note {
@@ -380,17 +381,15 @@ button {
 }
 
 .hero-stat-wrap {
-  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding-top: clamp(34px, 4.4vw, 58px);
 }
 
 .hero-stat-icon {
   position: absolute;
-  top: clamp(-48px, -3vw, -26px);
-  right: clamp(-198px, -14.2vw, -142px);
+  top: clamp(26px, 3vw, 42px);
+  right: var(--hero-inline-padding);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -398,12 +397,95 @@ button {
   height: clamp(46px, 3.8vw, 62px);
   color: #f3f0f1;
   opacity: 0.94;
-  transform: rotate(-9deg);
+  cursor: help;
+  z-index: 2;
 }
 
-.hero-stat-icon svg {
+.hero-stat-icon-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
+  transform: rotate(-9deg);
+  transform-origin: top right;
+  animation: hero-stat-icon-bell 3.8s ease-in-out infinite;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.hero-stat-icon-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.hero-stat-icon:focus-visible {
+  outline: 0;
+}
+
+.hero-stat-icon:focus-visible .hero-stat-icon-mark svg {
+  filter: drop-shadow(0 0 0.5rem rgba(250, 115, 21, 0.5));
+}
+
+.hero-stat-tooltip {
+  position: absolute;
+  top: calc(100% + 18px);
+  right: calc(100% - 18px);
+  display: grid;
+  gap: 14px;
+  width: min(460px, calc(100vw - 40px));
+  padding: 22px 24px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  background: rgba(14, 14, 16, 0.98);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.32);
+  color: #ebe7e7;
+  font-size: 1.18rem;
+  line-height: 1.6;
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.hero-stat-tooltip-copy,
+.hero-stat-tooltip-offer {
+  color: #ebe7e7;
+}
+
+.hero-stat-tooltip-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15em 0.38em;
+  font-weight: 500;
+}
+
+.hero-stat-tooltip-code {
+  color: #fa7315;
+  font-weight: 700;
+}
+
+.hero-stat-tooltip-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #ebe7e7;
+}
+
+.hero-stat-tooltip-verified-icon {
+  width: 1.08em;
+  height: 1.08em;
+}
+
+.hero-stat-icon:hover .hero-stat-tooltip,
+.hero-stat-icon:focus-visible .hero-stat-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .hero-stat {
@@ -1451,6 +1533,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+  max-width: 100%;
   margin: 28px 0 0;
   padding: 10px;
   border-radius: 999px;
@@ -1469,6 +1552,7 @@ button {
   color: var(--surface-text);
   font-size: 1.5rem;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background-color 180ms ease,
@@ -1864,6 +1948,12 @@ button {
   line-height: 1.05;
   font-weight: 700;
   letter-spacing: -0.04em;
+}
+
+.leaderboard-papers-empty-state {
+  margin-top: 16px;
+  margin-left: -10px;
+  width: calc(100% + 10px);
 }
 
 .paper-card,
@@ -3735,6 +3825,53 @@ button {
 .agents-panel-showcase .agents-billing-actions {
   gap: 16px;
   margin-top: 28px;
+}
+
+.agents-sandbox-budget-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
+  gap: 24px;
+  margin-top: 26px;
+  padding: 24px 26px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.02));
+}
+
+.agents-sandbox-budget-copy,
+.agents-sandbox-budget-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.agents-sandbox-budget-copy p,
+.agents-sandbox-budget-note {
+  margin: 0;
+  color: var(--surface-text-muted);
+  font-size: 1rem;
+  line-height: 1.66;
+}
+
+.agents-sandbox-budget-copy strong {
+  color: var(--surface-text);
+  font-weight: 700;
+}
+
+.agents-sandbox-budget-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.agents-sandbox-budget-input {
+  max-width: 220px;
+}
+
+.agents-sandbox-budget-note-error {
+  color: #ffb88b;
 }
 
 .agents-section-heading {
@@ -9165,6 +9302,37 @@ a {
   }
 }
 
+@keyframes hero-stat-icon-bell {
+  0%,
+  10% {
+    transform: rotate(-9deg);
+  }
+
+  20% {
+    transform: rotate(-15deg);
+  }
+
+  32% {
+    transform: rotate(7deg);
+  }
+
+  44% {
+    transform: rotate(-13deg);
+  }
+
+  56%,
+  100% {
+    transform: rotate(-9deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-stat-icon,
+  .hero-stat {
+    animation: none;
+  }
+}
+
 @media (max-width: 900px) {
   .sidebar {
     width: min(var(--sidebar-width), 100vw);
@@ -9395,6 +9563,21 @@ a {
     padding: 22px 0 0;
   }
 
+  .feed-controls {
+    display: flex;
+    width: 100%;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .feed-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 60px;
+    padding: 0 14px;
+    font-size: 1.08rem;
+  }
+
   .leaderboard-header,
   .leaderboard-pagination,
   .leaderboard-papers-header {
@@ -9454,16 +9637,13 @@ a {
 
   .hero-banner {
     --hero-inline-padding: 12px;
-    padding: 30px var(--hero-inline-padding) 18px;
-  }
-
-  .hero-stat-wrap {
-    padding-top: 28px;
+    --hero-top-padding: 30px;
+    padding: var(--hero-top-padding) var(--hero-inline-padding) 18px;
   }
 
   .hero-stat-icon {
-    top: -30px;
-    right: -92px;
+    top: 16px;
+    right: var(--hero-inline-padding);
     width: 36px;
     height: 36px;
   }
@@ -9698,6 +9878,18 @@ a {
 
   .agents-panel-showcase .agents-billing-actions {
     margin-top: 24px;
+  }
+
+  .agents-sandbox-budget-shell {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    margin-top: 22px;
+    padding: 22px;
+    border-radius: 24px;
+  }
+
+  .agents-sandbox-budget-input {
+    max-width: none;
   }
 
   .agents-empty-state {

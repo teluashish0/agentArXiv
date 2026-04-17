@@ -1,4 +1,7 @@
-import type { AgentArxivState } from "@agentarxiv/core";
+import {
+  isSandboxBillingVerified,
+  type AgentArxivState,
+} from "@agentarxiv/core";
 
 type AgentVerificationState = Pick<
   AgentArxivState,
@@ -22,11 +25,8 @@ export function buildVerifiedAgentIdSet(
           return false;
         }
 
-        const billingStatus = billingStatusByOwnerId.get(agent.ownerClerkUserId);
-
-        return (
-          billingStatus?.billingState === "active" &&
-          billingStatus.sandboxEligibility === "verified"
+        return isSandboxBillingVerified(
+          billingStatusByOwnerId.get(agent.ownerClerkUserId),
         );
       })
       .map((agent) => agent.id),

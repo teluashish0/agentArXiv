@@ -16,6 +16,11 @@ type BillingProjection = Pick<
   | "planName"
   | "planLookupKey"
   | "planMetadata"
+  | "currentPeriodStart"
+  | "currentPeriodEnd"
+  | "cancelAt"
+  | "cancelAtPeriodEnd"
+  | "canceledAt"
 >;
 
 const SANDBOX_BRAND_NAME = "AgentArxiv";
@@ -28,6 +33,7 @@ const SANDBOX_BRANDING_LOGO_FILE_ID = "file_1TMCRvA6IQORzoHbENbJ2mXv";
 const SANDBOX_BRANDING_ICON_FILE_ID = "file_1TMCTYA6IQORzoHbBgRTaoCK";
 const SANDBOX_PRODUCT_IMAGE_URL =
   "https://files.stripe.com/links/MDB8YWNjdF8xUzhHQ3pBNklRT1J6b0hifGZsX2xpdmVfZlJjcFNaWXBKc1I3aDhNUDkxUmdUbzBm00wHOVYjRA";
+const SANDBOX_PROMOTION_CODE = "RESEARCH";
 
 function toStripeCustomerId(
   customer: string | Stripe.Customer | Stripe.DeletedCustomer | null | undefined,
@@ -49,8 +55,166 @@ function toStripeProductId(
   return typeof product === "string" ? product : product.id;
 }
 
-function getPrimarySubscriptionPrice(subscription: Stripe.Subscription) {
-  return subscription.items.data[0]?.price;
+function getSandboxBaseSubscriptionItem(subscription: Stripe.Subscription) {
+  const config = getSandboxBillingConfig();
+
+  return (
+    subscription.items.data.find((item) => item.price?.id === config.stripeSandboxPriceId) ??
+    subscription.items.data.find(
+      (item) =>
+        item.price?.recurring?.usage_type !== "metered" &&
+        toStripeProductId(item.price?.product) === config.stripeSandboxProductId,
+    ) ??
+    subscription.items.data[0]
+  );
+}
+
+function toIsoStringFromUnixTimestamp(timestamp?: number | null) {
+  return typeof timestamp === "number"
+    ? new Date(timestamp * 1000).toISOString()
+    : undefined;
+}
+
+function getSubscriptionCurrentPeriodEnd(
+  subscription: Stripe.Subscription,
+  existing?: AccountBillingStatus,
+) {
+  const itemPeriodEnds = subscription.items.data
+    .map((item) => item.current_period_end)
+    .filter((value): value is number => typeof value === "number");
+
+  if (itemPeriodEnds.length === 0) {
+    return existing?.currentPeriodEnd;
+  }
+
+  return new Date(Math.max(...itemPeriodEnds) * 1000).toISOString();
+}
+
+function getSubscriptionCurrentPeriodStart(
+  subscription: Stripe.Subscription,
+  existing?: AccountBillingStatus,
+) {
+  const itemPeriodStarts = subscription.items.data
+    .map((item) => item.current_period_start)
+    .filter((value): value is number => typeof value === "number");
+
+  if (itemPeriodStarts.length === 0) {
+    return existing?.currentPeriodStart;
+  }
+
+  return new Date(Math.min(...itemPeriodStarts) * 1000).toISOString();
+}
+
+function subscriptionContainsSandboxProduct(
+  subscription: Stripe.Subscription,
+  productId: string,
+) {
+  return subscription.items.data.some(
+    (item) => toStripeProductId(item.price?.product) === productId,
+  );
+}
+
+function blocksNewSandboxCheckout(subscription: Stripe.Subscription) {
+  switch (subscription.status) {
+    case "active":
+    case "past_due":
+    case "unpaid":
+    case "paused":
+    case "trialing":
+    case "incomplete":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function subscriptionContainsSandboxUsagePrice(
+  subscription: Stripe.Subscription,
+  usagePriceId: string,
+) {
+  return subscription.items.data.some((item) => item.price?.id === usagePriceId);
+}
+
+async function findExistingSandboxSubscription(
+  stripe: Stripe,
+  stripeCustomerId: string,
+  stripeProductId: string,
+) {
+  const subscriptions = await stripe.subscriptions.list({
+    customer: stripeCustomerId,
+    status: "all",
+    limit: 20,
+    expand: ["data.items.data.price.product"],
+  });
+
+  return (
+    subscriptions.data.find(
+      (subscription) =>
+        blocksNewSandboxCheckout(subscription) &&
+        subscriptionContainsSandboxProduct(subscription, stripeProductId),
+    ) ?? null
+  );
+}
+
+async function ensureSandboxUsageSubscriptionItem(
+  stripe: Stripe,
+  subscription: Stripe.Subscription,
+) {
+  const { stripeSandboxUsagePriceId } = getSandboxBillingConfig();
+
+  if (
+    subscription.status === "canceled" ||
+    subscription.status === "incomplete_expired" ||
+    subscriptionContainsSandboxUsagePrice(subscription, stripeSandboxUsagePriceId)
+  ) {
+    return subscription;
+  }
+
+  await stripe.subscriptionItems.create(
+    {
+      subscription: subscription.id,
+      price: stripeSandboxUsagePriceId,
+      proration_behavior: "none",
+      metadata: {
+        sandboxUsage: "metered",
+      },
+    },
+    {
+      idempotencyKey: `sandbox_usage_item_${subscription.id}_${stripeSandboxUsagePriceId}`,
+    },
+  );
+
+  return stripe.subscriptions.retrieve(subscription.id, {
+    expand: ["items.data.price.product"],
+  });
+}
+
+function resolveDelinquentAt(input: {
+  billingState: AccountBillingStatus["billingState"];
+  canceledAt?: string;
+  existing?: AccountBillingStatus;
+}) {
+  const { billingState, canceledAt, existing } = input;
+
+  if (
+    billingState !== "past_due" &&
+    billingState !== "unpaid" &&
+    billingState !== "canceled"
+  ) {
+    return undefined;
+  }
+
+  const existingWasBlocked =
+    existing?.billingState === "past_due" ||
+    existing?.billingState === "unpaid" ||
+    existing?.billingState === "canceled" ||
+    existing?.sandboxEligibility === "blocked";
+
+  if (existingWasBlocked && existing?.delinquentAt) {
+    return existing.delinquentAt;
+  }
+
+  return canceledAt ?? new Date().toISOString();
 }
 
 async function resolveSandboxBillingCustomerName() {
@@ -148,7 +312,7 @@ function getSandboxCheckoutCustomText() {
   return {
     submit: {
       message:
-        "AgentArxiv Verified renews at $10 per month. Cancel anytime from the billing portal.",
+        `AgentArxiv Verified renews at $10 per month. Sandbox runtime is metered separately and billed to the saved card on file. Use promo code ${SANDBOX_PROMOTION_CODE} for $3 off. Cancel anytime from the billing portal.`,
     },
   };
 }
@@ -160,7 +324,7 @@ function projectSandboxSubscriptionState(input: {
 }): BillingProjection {
   const { subscription, existing } = input;
   const config = getSandboxBillingConfig();
-  const price = getPrimarySubscriptionPrice(subscription);
+  const price = getSandboxBaseSubscriptionItem(subscription)?.price;
   const stripePriceId = price?.id ?? existing?.stripePriceId;
   const stripeProductId =
     toStripeProductId(price?.product) ?? existing?.stripeProductId;
@@ -185,7 +349,6 @@ function projectSandboxSubscriptionState(input: {
 
   let billingState: AccountBillingStatus["billingState"];
   let sandboxEligibility: AccountBillingStatus["sandboxEligibility"];
-  let delinquentAt: string | undefined;
 
   switch (subscription.status) {
     case "active":
@@ -195,17 +358,14 @@ function projectSandboxSubscriptionState(input: {
     case "past_due":
       billingState = "past_due";
       sandboxEligibility = "blocked";
-      delinquentAt = new Date().toISOString();
       break;
     case "unpaid":
       billingState = "unpaid";
       sandboxEligibility = "blocked";
-      delinquentAt = new Date().toISOString();
       break;
     case "canceled":
       billingState = "canceled";
       sandboxEligibility = "blocked";
-      delinquentAt = new Date().toISOString();
       break;
     case "trialing":
     case "paused":
@@ -220,6 +380,16 @@ function projectSandboxSubscriptionState(input: {
       break;
   }
 
+  const currentPeriodStart = getSubscriptionCurrentPeriodStart(subscription, existing);
+  const currentPeriodEnd = getSubscriptionCurrentPeriodEnd(subscription, existing);
+  const cancelAt = toIsoStringFromUnixTimestamp(subscription.cancel_at);
+  const canceledAt = toIsoStringFromUnixTimestamp(subscription.canceled_at);
+  const delinquentAt = resolveDelinquentAt({
+    billingState,
+    canceledAt,
+    existing,
+  });
+
   return {
     billingState,
     sandboxEligibility,
@@ -231,12 +401,18 @@ function projectSandboxSubscriptionState(input: {
       price?.lookup_key ??
       existing?.planLookupKey ??
       config.stripeSandboxPlanLookupKey,
+    currentPeriodStart,
+    currentPeriodEnd,
+    cancelAt,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    canceledAt,
     planMetadata: {
       stripe_subscription_status: subscription.status,
       stripe_price_lookup_key:
         price?.lookup_key ??
         existing?.planMetadata.stripe_price_lookup_key ??
         "",
+      stripe_usage_price_id: config.stripeSandboxUsagePriceId,
       sandbox_plan_lookup_key: config.stripeSandboxPlanLookupKey,
     },
   };
@@ -350,6 +526,14 @@ export async function ensureSandboxBillingCustomer(ownerClerkUserId: string) {
     planName: SANDBOX_PLAN_NAME,
     planLookupKey: getSandboxBillingConfig().stripeSandboxPlanLookupKey,
     planMetadata: {},
+    currentPeriodStart: existing?.currentPeriodStart,
+    currentPeriodEnd: existing?.currentPeriodEnd,
+    sandboxUsageBudgetCents: existing?.sandboxUsageBudgetCents,
+    cancelAt: existing?.cancelAt,
+    cancelAtPeriodEnd: existing?.cancelAtPeriodEnd,
+    canceledAt: existing?.canceledAt,
+    delinquentAt: existing?.delinquentAt,
+    lastWebhookAt: existing?.lastWebhookAt,
   });
 
   return {
@@ -378,7 +562,28 @@ export async function createSandboxCheckoutSession(ownerClerkUserId: string) {
     );
   }
 
+  const existingStripeSubscription = await findExistingSandboxSubscription(
+    stripe,
+    stripeCustomerId,
+    config.stripeSandboxProductId,
+  );
+
+  if (existingStripeSubscription) {
+    await syncSandboxBillingFromSubscription({
+      ownerClerkUserId,
+      stripeCustomerId,
+      stripeSubscriptionId: existingStripeSubscription.id,
+    });
+
+    throw new Error(
+      existingStripeSubscription.status === "incomplete"
+        ? "Sandbox subscription setup is already in progress for this profile. Manage the existing subscription instead."
+        : "A sandbox subscription already exists for this profile. Manage the subscription instead.",
+    );
+  }
+
   const session = await stripe.checkout.sessions.create({
+    allow_promotion_codes: true,
     automatic_tax: {
       enabled: true,
     },
@@ -400,6 +605,9 @@ export async function createSandboxCheckoutSession(ownerClerkUserId: string) {
       {
         price: config.stripeSandboxPriceId,
         quantity: 1,
+      },
+      {
+        price: config.stripeSandboxUsagePriceId,
       },
     ],
     metadata: {
@@ -448,13 +656,18 @@ export async function syncSandboxBillingFromSubscription(input: {
   stripeCustomerId?: string;
   stripeSubscriptionId: string;
 }) {
+  const stripe = getStripeServer();
   const existing =
     await repository.findAccountBillingStatusByStripeSubscriptionId(
       input.stripeSubscriptionId,
     );
-  const subscription = await retrieveCurrentSubscription(
+  const retrievedSubscription = await retrieveCurrentSubscription(
     input.stripeSubscriptionId,
     input.stripeCustomerId,
+  );
+  const subscription = await ensureSandboxUsageSubscriptionItem(
+    stripe,
+    retrievedSubscription,
   );
   const stripeCustomerId =
     input.stripeCustomerId ?? toStripeCustomerId(subscription.customer);
@@ -470,9 +683,11 @@ export async function syncSandboxBillingFromSubscription(input: {
     subscription.metadata.ownerClerkUserId?.trim() ||
     existing?.ownerClerkUserId ||
     (await resolveOwnerClerkUserIdFromStripeCustomerId(stripeCustomerId));
+  const ownerExisting =
+    existing ?? (await repository.getAccountBillingStatus(ownerClerkUserId));
   const projection = projectSandboxSubscriptionState({
     subscription,
-    existing,
+    existing: ownerExisting,
     ownerClerkUserId,
   });
 
@@ -487,6 +702,12 @@ export async function syncSandboxBillingFromSubscription(input: {
     planName: projection.planName,
     planLookupKey: projection.planLookupKey,
     planMetadata: projection.planMetadata,
+    currentPeriodStart: projection.currentPeriodStart,
+    currentPeriodEnd: projection.currentPeriodEnd,
+    sandboxUsageBudgetCents: ownerExisting?.sandboxUsageBudgetCents,
+    cancelAt: projection.cancelAt,
+    cancelAtPeriodEnd: projection.cancelAtPeriodEnd,
+    canceledAt: projection.canceledAt,
     delinquentAt: projection.delinquentAt,
     lastWebhookAt: new Date().toISOString(),
   });
@@ -513,6 +734,8 @@ export async function syncSandboxBillingFromCheckoutSession(
   }
 
   if (!stripeSubscriptionId) {
+    const existing = await repository.getAccountBillingStatus(ownerClerkUserId);
+
     return repository.upsertAccountBillingStatus({
       ownerClerkUserId,
       stripeCustomerId,
@@ -523,6 +746,13 @@ export async function syncSandboxBillingFromCheckoutSession(
       planMetadata: {
         checkout_session_id: session.id,
       },
+      currentPeriodStart: existing?.currentPeriodStart,
+      currentPeriodEnd: existing?.currentPeriodEnd,
+      sandboxUsageBudgetCents: existing?.sandboxUsageBudgetCents,
+      cancelAt: existing?.cancelAt,
+      cancelAtPeriodEnd: existing?.cancelAtPeriodEnd,
+      canceledAt: existing?.canceledAt,
+      delinquentAt: existing?.delinquentAt,
       lastWebhookAt: new Date().toISOString(),
     });
   }
@@ -532,6 +762,42 @@ export async function syncSandboxBillingFromCheckoutSession(
     stripeCustomerId,
     stripeSubscriptionId,
   });
+}
+
+export async function syncSandboxBillingFromCheckoutSessionId(input: {
+  checkoutSessionId: string;
+  ownerClerkUserId?: string;
+}) {
+  const stripe = getStripeServer();
+  const session = await stripe.checkout.sessions.retrieve(input.checkoutSessionId, {
+    expand: ["subscription"],
+  });
+  const expectedOwnerClerkUserId = input.ownerClerkUserId?.trim();
+  const sessionOwnerClerkUserId =
+    session.metadata?.ownerClerkUserId?.trim() ?? session.client_reference_id?.trim();
+
+  if (
+    expectedOwnerClerkUserId &&
+    sessionOwnerClerkUserId &&
+    expectedOwnerClerkUserId !== sessionOwnerClerkUserId
+  ) {
+    throw new Error(
+      `Checkout session ${input.checkoutSessionId} does not belong to the signed-in account`,
+    );
+  }
+
+  const synced = await syncSandboxBillingFromCheckoutSession(session);
+
+  if (
+    expectedOwnerClerkUserId &&
+    synced.ownerClerkUserId !== expectedOwnerClerkUserId
+  ) {
+    throw new Error(
+      `Checkout session ${input.checkoutSessionId} does not belong to the signed-in account`,
+    );
+  }
+
+  return synced;
 }
 
 export async function syncSandboxBillingFromInvoice(invoice: Stripe.Invoice) {

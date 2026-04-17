@@ -5,8 +5,14 @@ import {
   type SandboxMetrics,
 } from "e2b";
 import {
+  calculateSandboxUsageCostMicrocents,
   executeWorkspaceNotebookJupyterCode,
+  getSandboxSessionLastMeteredAt,
+  getSandboxSessionUsageExecutionId,
+  getSandboxSessionUsageRuntimeSeconds,
   getWorkspaceNotebookCellSource,
+  isSandboxBillingVerified,
+  SANDBOX_SESSION_USAGE_LAST_METERED_AT_KEY,
   type WorkspaceNotebook,
   type WorkspaceNotebookCell,
 } from "@agentarxiv/core";
@@ -17,7 +23,11 @@ import type {
   SandboxSession,
   WorkspaceSandboxSummary,
 } from "@agentarxiv/core";
-import { getStripeClient, getSandboxWorkerConfig } from "./config";
+import {
+  SANDBOX_SUPPORT_ERROR_MESSAGE,
+  getStripeClient,
+  getSandboxWorkerConfig,
+} from "./config";
 import { ensureNotebookJupyterKernelRuntime } from "./notebook-runtime";
 
 type QueueWorkspace = {
@@ -91,6 +101,9 @@ type SandboxRepository = {
     stripeMeterEventIdentifier: string;
     meterValue: number;
     runtimeSeconds: number;
+    estimatedCostMicrocents?: number;
+    sandboxCpuCount?: number;
+    sandboxMemoryMb?: number;
     status: "pending" | "reported" | "failed";
     reportedAt?: string;
   }): Promise<unknown>;
@@ -118,7 +131,7 @@ type E2BSandboxManager = {
 type MeterReporter = {
   reportUsage(input: {
     stripeCustomerId: string;
-    executionId: string;
+    usageKey: string;
     runtimeSeconds: number;
   }): Promise<{
     identifier: string;
@@ -161,12 +174,12 @@ export function getBilledRuntimeSeconds(startedAt: string, finishedAt: string) {
   return Math.ceil(elapsedMilliseconds / 1000);
 }
 
-export function getMeterValueMinutes(runtimeSeconds: number) {
+export function getMeterValueSeconds(runtimeSeconds: number) {
   if (runtimeSeconds <= 0) {
     return 0;
   }
 
-  return Math.ceil(runtimeSeconds / 60);
+  return Math.ceil(runtimeSeconds);
 }
 
 export function getSessionExpiryAt(session: Pick<
@@ -185,11 +198,21 @@ function getSessionHardMaxAt(session: Pick<SandboxSession, "startedAt" | "maxAge
   return addMinutes(session.startedAt, session.maxAgeMinutes);
 }
 
-function isBillingVerified(billingStatus?: AccountBillingStatus) {
-  return (
-    billingStatus?.billingState === "active" &&
-    billingStatus.sandboxEligibility === "verified"
-  );
+function isMissingTemplateError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes("template") && message.includes("not found");
+}
+
+function toSandboxProvisioningErrorMessage(error: unknown) {
+  return isMissingTemplateError(error)
+    ? SANDBOX_SUPPORT_ERROR_MESSAGE
+    : error instanceof Error
+      ? error.message
+      : "Sandbox execution failed";
 }
 
 function toMetricsRecord(metrics?: SandboxMetrics | null): Record<string, number> {
@@ -212,6 +235,9 @@ function buildExecutionArtifact(input: {
   result: CommandResult;
   runtimeSeconds: number;
   metrics: Record<string, number>;
+  estimatedCostMicrocents: number;
+  sandboxCpuCount?: number;
+  sandboxMemoryMb?: number;
 }) {
   const lines = [
     `# Sandbox Execution ${input.execution.id}`,
@@ -220,10 +246,19 @@ function buildExecutionArtifact(input: {
     `Command: \`${input.execution.command.command}\``,
     `Exit code: ${input.result.exitCode}`,
     `Runtime seconds: ${input.runtimeSeconds}`,
+    `Estimated usage charge: $${(
+      input.estimatedCostMicrocents / 100_000_000
+    ).toFixed(6)}`,
   ];
 
   if (input.execution.command.workingDirectory) {
     lines.push(`Working directory: ${input.execution.command.workingDirectory}`);
+  }
+
+  if (input.sandboxCpuCount || input.sandboxMemoryMb) {
+    lines.push(
+      `Sandbox compute: ${input.sandboxCpuCount ?? "?"} vCPU / ${input.sandboxMemoryMb ?? "?"} MiB RAM`,
+    );
   }
 
   if (Object.keys(input.metrics).length > 0) {
@@ -318,15 +353,6 @@ export function createE2BSandboxManager(): E2BSandboxManager {
     timeoutMs: clampE2BProviderTimeoutMs(config.sessionMaxAgeMinutes * 60_000),
   };
 
-  function isMissingTemplateError(error: unknown) {
-    if (!(error instanceof Error)) {
-      return false;
-    }
-
-    const message = error.message.toLowerCase();
-    return message.includes("template") && message.includes("not found");
-  }
-
   return {
     async createSession(input) {
       const sandboxOptions = {
@@ -340,21 +366,14 @@ export function createE2BSandboxManager(): E2BSandboxManager {
         },
       };
 
-      if (!config.e2bSandboxTemplate) {
-        return await Sandbox.create(sandboxOptions);
-      }
-
       try {
         return await Sandbox.create(config.e2bSandboxTemplate, sandboxOptions);
       } catch (error) {
-        if (!isMissingTemplateError(error) || !config.allowDefaultTemplateFallback) {
-          throw error;
+        if (isMissingTemplateError(error)) {
+          throw new Error(SANDBOX_SUPPORT_ERROR_MESSAGE);
         }
 
-        console.warn(
-          `E2B template ${config.e2bSandboxTemplate} was not found. Falling back to the default template because AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK=true.`,
-        );
-        return await Sandbox.create(sandboxOptions);
+        throw error;
       }
     },
     async connectSession(providerSessionId) {
@@ -378,8 +397,8 @@ export function createStripeMeterReporter(): MeterReporter {
 
   return {
     async reportUsage(input) {
-      const identifier = `sandbox_execution_${input.executionId}`;
-      const meterValue = getMeterValueMinutes(input.runtimeSeconds);
+      const identifier = input.usageKey;
+      const meterValue = getMeterValueSeconds(input.runtimeSeconds);
 
       if (meterValue <= 0) {
         return {
@@ -406,9 +425,86 @@ export function createStripeMeterReporter(): MeterReporter {
   };
 }
 
+function toFiniteTimeMs(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function getSessionUsageAnchorAt(session: SandboxSession, throughAt: string) {
+  const throughAtMs = toFiniteTimeMs(throughAt);
+  const startedAtMs = toFiniteTimeMs(session.startedAt);
+  const expiresAtMs = toFiniteTimeMs(session.expiresAt);
+
+  if (
+    throughAtMs === undefined ||
+    startedAtMs === undefined ||
+    expiresAtMs === undefined
+  ) {
+    return throughAt;
+  }
+
+  return new Date(
+    Math.max(startedAtMs, Math.min(throughAtMs, expiresAtMs)),
+  ).toISOString();
+}
+
+function buildSandboxSessionUsageIdentifier(
+  sessionId: string,
+  fromAt: string,
+  throughAt: string,
+) {
+  return `sandbox_session_${sessionId}_${new Date(fromAt).getTime()}_${new Date(throughAt).getTime()}`;
+}
+
+async function persistSessionUsageAnchor(
+  repository: SandboxRepository,
+  session: SandboxSession,
+  anchorAt: string,
+) {
+  if (
+    session.metadata[SANDBOX_SESSION_USAGE_LAST_METERED_AT_KEY] === anchorAt
+  ) {
+    return session;
+  }
+
+  return repository.upsertSandboxSession({
+    sessionId: session.id,
+    workspaceId: session.workspaceId,
+    agentId: session.agentId,
+    ownerClerkUserId: session.ownerClerkUserId,
+    providerSessionId: session.providerSessionId,
+    status: session.status,
+    metadata: {
+      ...session.metadata,
+      [SANDBOX_SESSION_USAGE_LAST_METERED_AT_KEY]: anchorAt,
+    },
+    errorMessage: session.errorMessage,
+    startedAt: session.startedAt,
+    lastActiveAt: session.lastActiveAt,
+    expiresAt: session.expiresAt,
+  });
+}
+
+async function ensureSessionUsageAnchor(
+  repository: SandboxRepository,
+  session: SandboxSession,
+  anchorAt: string,
+) {
+  if (session.metadata[SANDBOX_SESSION_USAGE_LAST_METERED_AT_KEY]) {
+    return session;
+  }
+
+  return persistSessionUsageAnchor(repository, session, anchorAt);
+}
+
 async function expireStaleSandboxSessions(
   repository: SandboxRepository,
   sandboxManager: E2BSandboxManager,
+  meterReporter: MeterReporter,
 ) {
   const workspaces = await repository.listWorkspaces();
   const executions = await repository.listSandboxExecutions({});
@@ -431,13 +527,28 @@ async function expireStaleSandboxSessions(
         continue;
       }
 
-      if (new Date(getSessionExpiryAt(session)).getTime() > Date.now()) {
+      let meteredSession = session;
+      const billingStatus = await repository.getAccountBillingStatus(
+        session.ownerClerkUserId,
+      );
+
+      if (billingStatus?.stripeCustomerId && session.providerSessionId) {
+        meteredSession = await reportSandboxSessionUsage(
+          repository,
+          meterReporter,
+          billingStatus,
+          session,
+          now,
+        );
+      }
+
+      if (new Date(getSessionExpiryAt(meteredSession)).getTime() > Date.now()) {
         continue;
       }
 
-      if (session.providerSessionId) {
+      if (meteredSession.providerSessionId) {
         try {
-          await sandboxManager.terminateSession(session.providerSessionId);
+          await sandboxManager.terminateSession(meteredSession.providerSessionId);
         } catch {
           // The provider session might already be gone. The local runtime state
           // still needs to age out deterministically.
@@ -445,16 +556,16 @@ async function expireStaleSandboxSessions(
       }
 
       await repository.upsertSandboxSession({
-        sessionId: session.id,
-        workspaceId: session.workspaceId,
-        agentId: session.agentId,
-        ownerClerkUserId: session.ownerClerkUserId,
-        providerSessionId: session.providerSessionId,
+        sessionId: meteredSession.id,
+        workspaceId: meteredSession.workspaceId,
+        agentId: meteredSession.agentId,
+        ownerClerkUserId: meteredSession.ownerClerkUserId,
+        providerSessionId: meteredSession.providerSessionId,
         status: "expired",
-        metadata: session.metadata,
-        errorMessage: session.errorMessage,
-        startedAt: session.startedAt,
-        lastActiveAt: session.lastActiveAt,
+        metadata: meteredSession.metadata,
+        errorMessage: meteredSession.errorMessage,
+        startedAt: meteredSession.startedAt,
+        lastActiveAt: meteredSession.lastActiveAt,
         expiresAt: now,
       });
     }
@@ -487,10 +598,15 @@ async function ensureSandboxSession(
         lastActiveAt: now,
         expiresAt: getSessionHardMaxAt(session),
       });
+      const anchoredSession = await ensureSessionUsageAnchor(
+        repository,
+        refreshedSession,
+        refreshedSession.startedAt,
+      );
 
       return {
         sandbox,
-        session: refreshedSession,
+        session: anchoredSession,
       };
     } catch {
       // Fall through to provision a new provider session against the existing
@@ -542,10 +658,15 @@ async function ensureSandboxSession(
     lastActiveAt: now,
     expiresAt: addMinutes(now, session.maxAgeMinutes),
   });
+  const anchoredSession = await ensureSessionUsageAnchor(
+    repository,
+    readySession,
+    readySession.startedAt,
+  );
 
   return {
     sandbox,
-    session: readySession,
+    session: anchoredSession,
   };
 }
 
@@ -621,62 +742,99 @@ async function waitForCommandResult(handle: {
   }
 }
 
-async function reportExecutionUsage(
+async function reportSandboxSessionUsage(
   repository: SandboxRepository,
   meterReporter: MeterReporter,
   billingStatus: AccountBillingStatus,
-  execution: SandboxExecution,
-  runtimeSeconds: number,
+  session: SandboxSession,
+  throughAt: string,
+  sandboxCompute?: {
+    cpuCount?: number;
+    memoryMB?: number;
+  },
 ) {
-  if (!billingStatus.stripeCustomerId || runtimeSeconds <= 0) {
-    return;
+  const config = getSandboxWorkerConfig();
+  const fromAt = getSandboxSessionLastMeteredAt({
+    session,
+  });
+  const anchorAt = getSessionUsageAnchorAt(session, throughAt);
+  const runtimeSeconds = getSandboxSessionUsageRuntimeSeconds({
+    session,
+    fromAt,
+    throughAt: anchorAt,
+  });
+
+  if (!billingStatus.stripeCustomerId) {
+    return persistSessionUsageAnchor(repository, session, anchorAt);
   }
 
-  const config = getSandboxWorkerConfig();
-  const identifier = `sandbox_execution_${execution.id}`;
-  const meterValue = getMeterValueMinutes(runtimeSeconds);
+  if (runtimeSeconds <= 0) {
+    return persistSessionUsageAnchor(repository, session, anchorAt);
+  }
+
+  const identifier = buildSandboxSessionUsageIdentifier(
+    session.id,
+    fromAt,
+    anchorAt,
+  );
+  const meterValue = getMeterValueSeconds(runtimeSeconds);
+  const estimatedCostMicrocents = calculateSandboxUsageCostMicrocents({
+    runtimeSeconds,
+    usagePriceUsdPerSecond: config.sandboxUsagePriceUsdPerSecond,
+  });
 
   await repository.recordSandboxUsage({
-    executionId: execution.id,
-    ownerClerkUserId: execution.ownerClerkUserId,
+    executionId: getSandboxSessionUsageExecutionId(session.id),
+    ownerClerkUserId: session.ownerClerkUserId,
     stripeCustomerId: billingStatus.stripeCustomerId,
     stripeMeterEventName: config.stripeSandboxMeterEventName,
     stripeMeterEventIdentifier: identifier,
     meterValue,
     runtimeSeconds,
+    estimatedCostMicrocents,
+    sandboxCpuCount: sandboxCompute?.cpuCount,
+    sandboxMemoryMb: sandboxCompute?.memoryMB,
     status: "pending",
   });
 
   try {
     const meterReport = await meterReporter.reportUsage({
       stripeCustomerId: billingStatus.stripeCustomerId,
-      executionId: execution.id,
+      usageKey: identifier,
       runtimeSeconds,
     });
 
     await repository.recordSandboxUsage({
-      executionId: execution.id,
-      ownerClerkUserId: execution.ownerClerkUserId,
+      executionId: getSandboxSessionUsageExecutionId(session.id),
+      ownerClerkUserId: session.ownerClerkUserId,
       stripeCustomerId: billingStatus.stripeCustomerId,
       stripeMeterEventName: config.stripeSandboxMeterEventName,
       stripeMeterEventIdentifier: meterReport.identifier,
       meterValue: meterReport.meterValue,
       runtimeSeconds,
+      estimatedCostMicrocents,
+      sandboxCpuCount: sandboxCompute?.cpuCount,
+      sandboxMemoryMb: sandboxCompute?.memoryMB,
       status: "reported",
       reportedAt: new Date().toISOString(),
     });
   } catch {
     await repository.recordSandboxUsage({
-      executionId: execution.id,
-      ownerClerkUserId: execution.ownerClerkUserId,
+      executionId: getSandboxSessionUsageExecutionId(session.id),
+      ownerClerkUserId: session.ownerClerkUserId,
       stripeCustomerId: billingStatus.stripeCustomerId,
       stripeMeterEventName: config.stripeSandboxMeterEventName,
       stripeMeterEventIdentifier: identifier,
       meterValue,
       runtimeSeconds,
+      estimatedCostMicrocents,
+      sandboxCpuCount: sandboxCompute?.cpuCount,
+      sandboxMemoryMb: sandboxCompute?.memoryMB,
       status: "failed",
     });
   }
+
+  return persistSessionUsageAnchor(repository, session, anchorAt);
 }
 
 function findNotebookCell(
@@ -785,7 +943,7 @@ async function processSandboxExecution(
     execution.ownerClerkUserId,
   );
 
-  if (execution.status === "queued" && !isBillingVerified(billingStatus)) {
+  if (execution.status === "queued" && !isSandboxBillingVerified(billingStatus)) {
     return repository.updateSandboxExecution({
       executionId: execution.id,
       status: "failed",
@@ -818,6 +976,11 @@ async function processSandboxExecution(
         notebookExecution.startedAt,
         finishedAt,
       );
+      const sandboxInfo = await sandbox.getInfo().catch(() => null);
+      const estimatedCostMicrocents = calculateSandboxUsageCostMicrocents({
+        runtimeSeconds,
+        usagePriceUsdPerSecond: getSandboxWorkerConfig().sandboxUsagePriceUsdPerSecond,
+      });
       const metrics = toMetricsRecord(
         (await sandbox.getMetrics().catch(() => null))?.at(-1) ?? null,
       );
@@ -848,13 +1011,19 @@ async function processSandboxExecution(
             : undefined,
       } satisfies CommandResult;
 
+      let meteredSession = notebookExecution.session;
+
       if (billingStatus) {
-        await reportExecutionUsage(
+        meteredSession = await reportSandboxSessionUsage(
           repository,
           meterReporter,
           billingStatus,
-          execution,
-          runtimeSeconds,
+          notebookExecution.session,
+          finishedAt,
+          {
+            cpuCount: sandboxInfo?.cpuCount,
+            memoryMB: sandboxInfo?.memoryMB,
+          },
         );
       }
 
@@ -874,7 +1043,14 @@ async function processSandboxExecution(
             : {}),
           ...(jupyterServerUrl ? { jupyterServerUrl } : {}),
           ...(jupyterKernelId ? { jupyterKernelId } : {}),
-          meterMinutes: String(getMeterValueMinutes(runtimeSeconds)),
+          meterSeconds: String(getMeterValueSeconds(runtimeSeconds)),
+          ...(sandboxInfo?.cpuCount
+            ? { sandboxCpuCount: String(sandboxInfo.cpuCount) }
+            : {}),
+          ...(sandboxInfo?.memoryMB
+            ? { sandboxMemoryMb: String(sandboxInfo.memoryMB) }
+            : {}),
+          estimatedCostMicrocents: String(estimatedCostMicrocents),
         },
         notebookCellOutputs: notebookOutputs,
         notebookExecutionCount: notebookExecution.notebookResult.executionCount,
@@ -896,21 +1072,24 @@ async function processSandboxExecution(
           result: commandResult,
           runtimeSeconds,
           metrics,
+          estimatedCostMicrocents,
+          sandboxCpuCount: sandboxInfo?.cpuCount,
+          sandboxMemoryMb: sandboxInfo?.memoryMB,
         }),
       });
 
       await repository.upsertSandboxSession({
-        sessionId: notebookExecution.session.id,
-        workspaceId: notebookExecution.session.workspaceId,
-        agentId: notebookExecution.session.agentId,
-        ownerClerkUserId: notebookExecution.session.ownerClerkUserId,
-        providerSessionId: notebookExecution.session.providerSessionId,
+        sessionId: meteredSession.id,
+        workspaceId: meteredSession.workspaceId,
+        agentId: meteredSession.agentId,
+        ownerClerkUserId: meteredSession.ownerClerkUserId,
+        providerSessionId: meteredSession.providerSessionId,
         status: "ready",
-        metadata: notebookExecution.session.metadata,
-        startedAt: notebookExecution.session.startedAt,
+        metadata: meteredSession.metadata,
+        startedAt: meteredSession.startedAt,
         lastActiveAt: finishedAt,
         expiresAt: getSessionExpiryAt({
-          ...notebookExecution.session,
+          ...meteredSession,
           lastActiveAt: finishedAt,
         }),
       });
@@ -922,6 +1101,11 @@ async function processSandboxExecution(
     const result = await waitForCommandResult(command.handle);
     const finishedAt = new Date().toISOString();
     const runtimeSeconds = getBilledRuntimeSeconds(command.startedAt, finishedAt);
+    const sandboxInfo = await sandbox.getInfo().catch(() => null);
+    const estimatedCostMicrocents = calculateSandboxUsageCostMicrocents({
+      runtimeSeconds,
+      usagePriceUsdPerSecond: getSandboxWorkerConfig().sandboxUsagePriceUsdPerSecond,
+    });
     const metrics = toMetricsRecord(
       (await sandbox.getMetrics().catch(() => null))?.at(-1) ?? null,
     );
@@ -933,13 +1117,19 @@ async function processSandboxExecution(
           ? "completed"
           : "failed";
 
+    let meteredSession = session;
+
     if (billingStatus) {
-      await reportExecutionUsage(
+      meteredSession = await reportSandboxSessionUsage(
         repository,
         meterReporter,
         billingStatus,
-        execution,
-        runtimeSeconds,
+        session,
+        finishedAt,
+        {
+          cpuCount: sandboxInfo?.cpuCount,
+          memoryMB: sandboxInfo?.memoryMB,
+        },
       );
     }
 
@@ -961,7 +1151,14 @@ async function processSandboxExecution(
         ...(command.providerExecutionId
           ? { providerExecutionId: command.providerExecutionId }
           : {}),
-        meterMinutes: String(getMeterValueMinutes(runtimeSeconds)),
+        meterSeconds: String(getMeterValueSeconds(runtimeSeconds)),
+        ...(sandboxInfo?.cpuCount
+          ? { sandboxCpuCount: String(sandboxInfo.cpuCount) }
+          : {}),
+        ...(sandboxInfo?.memoryMB
+          ? { sandboxMemoryMb: String(sandboxInfo.memoryMB) }
+          : {}),
+        estimatedCostMicrocents: String(estimatedCostMicrocents),
       },
       resultSummary:
         currentExecution.resultSummary ??
@@ -976,21 +1173,24 @@ async function processSandboxExecution(
         result,
         runtimeSeconds,
         metrics,
+        estimatedCostMicrocents,
+        sandboxCpuCount: sandboxInfo?.cpuCount,
+        sandboxMemoryMb: sandboxInfo?.memoryMB,
       }),
     });
 
     await repository.upsertSandboxSession({
-      sessionId: session.id,
-      workspaceId: session.workspaceId,
-      agentId: session.agentId,
-      ownerClerkUserId: session.ownerClerkUserId,
-      providerSessionId: session.providerSessionId,
+      sessionId: meteredSession.id,
+      workspaceId: meteredSession.workspaceId,
+      agentId: meteredSession.agentId,
+      ownerClerkUserId: meteredSession.ownerClerkUserId,
+      providerSessionId: meteredSession.providerSessionId,
       status: "ready",
-      metadata: session.metadata,
-      startedAt: session.startedAt,
+      metadata: meteredSession.metadata,
+      startedAt: meteredSession.startedAt,
       lastActiveAt: finishedAt,
       expiresAt: getSessionExpiryAt({
-        ...session,
+        ...meteredSession,
         lastActiveAt: finishedAt,
       }),
     });
@@ -998,8 +1198,7 @@ async function processSandboxExecution(
     return updatedExecution;
   } catch (error) {
     const finishedAt = new Date().toISOString();
-    const message =
-      error instanceof Error ? error.message : "Sandbox execution failed";
+    const message = toSandboxProvisioningErrorMessage(error);
 
     await repository.upsertSandboxSession({
       sessionId: session.id,
@@ -1035,7 +1234,7 @@ export async function processSandboxQueue(
   const sandboxManager = options?.sandboxManager ?? createE2BSandboxManager();
   const meterReporter = options?.meterReporter ?? createStripeMeterReporter();
 
-  await expireStaleSandboxSessions(repository, sandboxManager);
+  await expireStaleSandboxSessions(repository, sandboxManager, meterReporter);
 
   const executions = sortExecutionsForProcessing(
     (await repository.listSandboxExecutions({})).filter((execution) =>

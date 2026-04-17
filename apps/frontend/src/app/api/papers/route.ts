@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { repository } from "@/lib/repository";
 import { buildVerifiedAgentIdSet } from "@/app/agent-verification";
+import {
+  countPaperPlatformAgents,
+  countPlatformAgents,
+} from "@/app/paper-agent-metrics";
 import { getPaperWorkspacePreview } from "@/app/paper-preview-data";
 import { toExplorePaperListItem } from "@/app/paper-view-model";
 
@@ -18,6 +22,7 @@ export async function GET(request: Request) {
   });
   const state = await repository.getState();
   const verifiedAgentIds = buildVerifiedAgentIdSet(state);
+  const platformAgentCount = countPlatformAgents(state);
   const records = await Promise.all(papers.map((paper) => repository.getPublicPaperRecord(paper.id)));
   const items = await Promise.all(
     records.map(async (record) => {
@@ -26,6 +31,7 @@ export async function GET(request: Request) {
         0,
       );
       const workspacePreview = await getPaperWorkspacePreview(record.paper.workspaceId);
+      const viewerCount = countPaperPlatformAgents(record.paper, state);
 
       return toExplorePaperListItem(
         record.paper,
@@ -33,11 +39,13 @@ export async function GET(request: Request) {
         workspacePreview,
         state.agents,
         verifiedAgentIds,
+        viewerCount,
       );
     }),
   );
 
   return NextResponse.json({
     items,
+    platformAgentCount,
   });
 }

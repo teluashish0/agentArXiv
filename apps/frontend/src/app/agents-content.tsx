@@ -3,6 +3,7 @@
 import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { SupportErrorMessage } from "./support-error-message";
 import { VerifiedBadgeIcon, VerifiedName } from "./verified-badge";
@@ -46,7 +47,25 @@ type AccountBillingStatus = {
   billingState: "inactive" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
   sandboxEligibility: "verified" | "unverified" | "blocked";
   planName?: string;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  sandboxUsageBudgetCents?: number;
+  cancelAt?: string;
+  cancelAtPeriodEnd?: boolean;
+  canceledAt?: string;
   delinquentAt?: string;
+};
+
+type SandboxUsageStatus = {
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  reportedUsageMicrocents: number;
+  reservedUsageMicrocents: number;
+  projectedUsageMicrocents: number;
+  budgetLimitCents?: number;
+  remainingBudgetMicrocents?: number;
+  usingDefaultBudget: boolean;
+  rateMicrocentsPerHour: number;
 };
 
 const ACCOUNT_TOKEN_EXPIRY_OPTIONS: {
@@ -63,10 +82,13 @@ const ACCOUNT_TOKEN_CALENDAR_WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
 type SandboxSubscriptionStatusResponse = {
   subscriptionStatus: AccountBillingStatus | null;
+  usageStatus: SandboxUsageStatus | null;
   canManageSubscription: boolean;
   billingConfigured: boolean;
   billingConfigurationMessage: string | null;
 };
+
+const SANDBOX_USAGE_MICROCENTS_PER_DOLLAR = 100_000_000;
 
 type AgentsContentProps = {
   header?: {
@@ -94,6 +116,65 @@ function formatDateTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatUsdFromMicrocents(value: number) {
+  const dollars = value / SANDBOX_USAGE_MICROCENTS_PER_DOLLAR;
+  const maximumFractionDigits = Math.abs(dollars) < 10 ? 4 : 2;
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits,
+  }).format(dollars);
+}
+
+function formatUsdFromCents(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value / 100);
+}
+
+function formatSandboxBudgetInputValue(value?: number) {
+  if (value === undefined) {
+    return "";
+  }
+
+  return (value / 100).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+}
+
+function parseSandboxBudgetInput(value: string) {
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0) {
+    return {
+      kind: "empty" as const,
+    };
+  }
+
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+    return {
+      kind: "invalid" as const,
+    };
+  }
+
+  const [dollarsPart, centsPart = ""] = trimmed.split(".");
+  const cents = Number(dollarsPart) * 100 + Number((centsPart + "00").slice(0, 2));
+
+  if (!Number.isSafeInteger(cents) || cents <= 0) {
+    return {
+      kind: "invalid" as const,
+    };
+  }
+
+  return {
+    kind: "value" as const,
+    cents,
+  };
 }
 
 function addDays(value: Date, days: number) {
@@ -213,8 +294,26 @@ function formatAccountTokenUsage(maxUses?: number) {
   return `Up to ${maxUses} uses.`;
 }
 
+function hasSubscriptionEnded(status?: AccountBillingStatus | null) {
+  const effectiveEnd =
+    status?.cancelAt ??
+    (status?.cancelAtPeriodEnd ? status.currentPeriodEnd : undefined);
+
+  if (!effectiveEnd) {
+    return false;
+  }
+
+  const effectiveEndMs = new Date(effectiveEnd).getTime();
+
+  return Number.isFinite(effectiveEndMs) && effectiveEndMs <= Date.now();
+}
+
 function hasVerifiedSubscription(status?: AccountBillingStatus | null) {
-  return status?.billingState === "active" && status.sandboxEligibility === "verified";
+  return (
+    status?.billingState === "active" &&
+    status.sandboxEligibility === "verified" &&
+    !hasSubscriptionEnded(status)
+  );
 }
 
 function hasBlockedVerification(status?: AccountBillingStatus | null) {
@@ -228,6 +327,10 @@ function hasBlockedVerification(status?: AccountBillingStatus | null) {
 function formatSubscriptionState(status?: AccountBillingStatus | null) {
   if (!status) {
     return "Not subscribed";
+  }
+
+  if (status.billingState === "active" && hasSubscriptionEnded(status)) {
+    return "Ended";
   }
 
   switch (status.billingState) {
@@ -251,8 +354,28 @@ function formatSubscriptionSummary(status?: AccountBillingStatus | null) {
     return "No sandbox subscription is attached to this account yet.";
   }
 
+  if (status.billingState === "active" && hasSubscriptionEnded(status)) {
+    const endedAt = status.cancelAt ?? status.currentPeriodEnd;
+
+    return endedAt
+      ? `This subscription ended on ${formatDate(endedAt)}. Subscribe again to restore sandbox access.`
+      : "This subscription has ended. Subscribe again to restore sandbox access.";
+  }
+
   switch (status.billingState) {
     case "active":
+      if (status.cancelAtPeriodEnd && status.currentPeriodEnd) {
+        return status.planName
+          ? `${status.planName} is active until ${formatDate(status.currentPeriodEnd)} and will not renew after that date.`
+          : `Sandbox access is active until ${formatDate(status.currentPeriodEnd)} and will not renew after that date.`;
+      }
+
+      if (status.currentPeriodEnd) {
+        return status.planName
+          ? `${status.planName} is active for this account and renews on ${formatDate(status.currentPeriodEnd)}.`
+          : `Sandbox access is active for this account and renews on ${formatDate(status.currentPeriodEnd)}.`;
+      }
+
       return status.planName
         ? `${status.planName} is active for this account.`
         : "Sandbox access is active for this account.";
@@ -262,7 +385,9 @@ function formatSubscriptionSummary(status?: AccountBillingStatus | null) {
         ? `Payment is overdue since ${formatDate(status.delinquentAt)}. Update the subscription to restore sandbox access.`
         : "Payment is overdue. Update the subscription to restore sandbox access.";
     case "canceled":
-      return "This subscription has been canceled. Subscribe again to restore sandbox access.";
+      return status.canceledAt
+        ? `This subscription was canceled on ${formatDate(status.canceledAt)}. Subscribe again to restore sandbox access.`
+        : "This subscription has been canceled. Subscribe again to restore sandbox access.";
     case "incomplete":
       return "Complete the subscription setup to activate sandbox access.";
     default:
@@ -276,6 +401,14 @@ function formatVerificationState(status?: AccountBillingStatus | null) {
 
 function formatVerificationSummary(status?: AccountBillingStatus | null) {
   if (hasVerifiedSubscription(status)) {
+    if (status?.cancelAtPeriodEnd && status.currentPeriodEnd) {
+      return `Sandbox execution is enabled for every agent owned by this account until ${formatDate(status.currentPeriodEnd)}.`;
+    }
+
+    if (status?.currentPeriodEnd) {
+      return `Sandbox execution is enabled for every agent owned by this account. The subscription renews on ${formatDate(status.currentPeriodEnd)}.`;
+    }
+
     return "Sandbox execution is enabled for every agent owned by this account.";
   }
 
@@ -311,10 +444,19 @@ async function fetchAccountAgents() {
   return result;
 }
 
-async function fetchSandboxBillingStatus() {
-  const response = await fetch("/api/account/sandbox/status", {
-    cache: "no-store",
-  });
+async function fetchSandboxBillingStatus(sessionId?: string | null) {
+  const params = new URLSearchParams();
+
+  if (sessionId) {
+    params.set("sessionId", sessionId);
+  }
+
+  const response = await fetch(
+    `/api/account/sandbox/status${params.size > 0 ? `?${params.toString()}` : ""}`,
+    {
+      cache: "no-store",
+    },
+  );
   const result = (await response.json()) as
     | SandboxSubscriptionStatusResponse
     | { error?: string };
@@ -331,6 +473,10 @@ async function fetchSandboxBillingStatus() {
     throw new Error("Unexpected sandbox subscription response");
   }
 
+  if (!("usageStatus" in result)) {
+    throw new Error("Unexpected sandbox subscription response");
+  }
+
   if (!("billingConfigured" in result) || !("billingConfigurationMessage" in result)) {
     throw new Error("Unexpected sandbox subscription response");
   }
@@ -338,15 +484,16 @@ async function fetchSandboxBillingStatus() {
   return result;
 }
 
-async function loadAccountState() {
+async function loadAccountState(sessionId?: string | null) {
   const [agents, subscriptionData] = await Promise.all([
     fetchAccountAgents(),
-    fetchSandboxBillingStatus(),
+    fetchSandboxBillingStatus(sessionId),
   ]);
 
   return {
     agents,
     subscriptionStatus: subscriptionData.subscriptionStatus,
+    usageStatus: subscriptionData.usageStatus,
     canManageSubscription: subscriptionData.canManageSubscription,
     billingConfigured: subscriptionData.billingConfigured,
     billingConfigurationMessage: subscriptionData.billingConfigurationMessage,
@@ -358,14 +505,22 @@ export function AgentsContent({
   headerUtility,
 }: AgentsContentProps = {}) {
   const { isLoaded, isSignedIn } = useUser();
+  const searchParams = useSearchParams();
+  const checkoutSessionId =
+    searchParams.get("checkout") === "success"
+      ? searchParams.get("session_id")
+      : null;
   const [agents, setAgents] = useState<AccountAgent[]>([]);
   const [subscriptionStatus, setSubscriptionStatus] =
     useState<AccountBillingStatus | null>(null);
+  const [sandboxUsageStatus, setSandboxUsageStatus] =
+    useState<SandboxUsageStatus | null>(null);
   const [canManageSubscription, setCanManageSubscription] = useState(false);
   const [isSandboxBillingConfigured, setIsSandboxBillingConfigured] =
     useState(true);
   const [sandboxBillingConfigurationMessage, setSandboxBillingConfigurationMessage] =
     useState<string | null>(null);
+  const [sandboxBudgetInput, setSandboxBudgetInput] = useState("");
   const [accountToken, setAccountToken] = useState<AccountAccessToken | null>(null);
   const [isAccountTokenDialogOpen, setIsAccountTokenDialogOpen] = useState(false);
   const [isAccountTokenExpiryMenuOpen, setIsAccountTokenExpiryMenuOpen] = useState(false);
@@ -382,10 +537,12 @@ export function AgentsContent({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accountTokenError, setAccountTokenError] = useState<string | null>(null);
   const [sandboxBillingError, setSandboxBillingError] = useState<string | null>(null);
+  const [sandboxBudgetError, setSandboxBudgetError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreatingAccountToken, setIsCreatingAccountToken] = useState(false);
   const [isManagingSandboxBilling, setIsManagingSandboxBilling] = useState(false);
+  const [isSavingSandboxBudget, setIsSavingSandboxBudget] = useState(false);
   const [hasCopiedAccountToken, setHasCopiedAccountToken] = useState(false);
   const accountTokenDialogPrimaryFieldRef = useRef<HTMLButtonElement | null>(null);
   const accountTokenExpiryControlRef = useRef<HTMLDivElement | null>(null);
@@ -399,17 +556,21 @@ export function AgentsContent({
     if (!isSignedIn) {
       setAgents([]);
       setSubscriptionStatus(null);
+      setSandboxUsageStatus(null);
       setCanManageSubscription(false);
       setIsSandboxBillingConfigured(true);
       setSandboxBillingConfigurationMessage(null);
+      setSandboxBudgetInput("");
       setAccountToken(null);
       setLoadError(null);
       setAccountTokenError(null);
       setSandboxBillingError(null);
+      setSandboxBudgetError(null);
       setIsLoading(false);
       setIsRefreshing(false);
       setIsCreatingAccountToken(false);
       setIsManagingSandboxBilling(false);
+      setIsSavingSandboxBudget(false);
       setHasCopiedAccountToken(false);
       setIsAccountTokenDialogOpen(false);
       setIsAccountTokenExpiryMenuOpen(false);
@@ -425,7 +586,7 @@ export function AgentsContent({
     setIsLoading(true);
     setLoadError(null);
 
-    void loadAccountState()
+    void loadAccountState(checkoutSessionId)
       .then((state) => {
         if (!isActive) {
           return;
@@ -433,9 +594,14 @@ export function AgentsContent({
 
         setAgents(state.agents);
         setSubscriptionStatus(state.subscriptionStatus);
+        setSandboxUsageStatus(state.usageStatus);
         setCanManageSubscription(state.canManageSubscription);
         setIsSandboxBillingConfigured(state.billingConfigured);
         setSandboxBillingConfigurationMessage(state.billingConfigurationMessage);
+        setSandboxBudgetInput(
+          formatSandboxBudgetInputValue(state.usageStatus?.budgetLimitCents),
+        );
+        setSandboxBudgetError(null);
       })
       .catch((error) => {
         if (!isActive) {
@@ -456,7 +622,7 @@ export function AgentsContent({
     return () => {
       isActive = false;
     };
-  }, [isLoaded, isSignedIn]);
+  }, [checkoutSessionId, isLoaded, isSignedIn]);
 
   const selectedAccountTokenExpiry =
     accountTokenExpiryPreset === "custom"
@@ -473,6 +639,7 @@ export function AgentsContent({
         selectedAccountTokenExpiry.getTime() > Date.now(),
     );
   const hasValidAccountTokenMaxUses = parsedAccountTokenMaxUses !== null;
+  const parsedSandboxBudgetInput = parseSandboxBudgetInput(sandboxBudgetInput);
 
   useEffect(() => {
     if (!isAccountTokenDialogOpen) {
@@ -595,14 +762,20 @@ export function AgentsContent({
     setIsRefreshing(true);
     setLoadError(null);
     setSandboxBillingError(null);
+    setSandboxBudgetError(null);
 
     void loadAccountState()
       .then((state) => {
         setAgents(state.agents);
         setSubscriptionStatus(state.subscriptionStatus);
+        setSandboxUsageStatus(state.usageStatus);
         setCanManageSubscription(state.canManageSubscription);
         setIsSandboxBillingConfigured(state.billingConfigured);
         setSandboxBillingConfigurationMessage(state.billingConfigurationMessage);
+        setSandboxBudgetInput(
+          formatSandboxBudgetInputValue(state.usageStatus?.budgetLimitCents),
+        );
+        setSandboxBudgetError(null);
       })
       .catch((error) => {
         setLoadError(error instanceof Error ? error.message : "Unable to load account state");
@@ -684,6 +857,7 @@ export function AgentsContent({
 
     setIsManagingSandboxBilling(true);
     setSandboxBillingError(null);
+    setSandboxBudgetError(null);
 
     try {
       const response = await fetch(path, {
@@ -703,6 +877,80 @@ export function AgentsContent({
           : "Unable to open sandbox subscription flow",
       );
       setIsManagingSandboxBilling(false);
+    }
+  };
+
+  const handleSaveSandboxBudget = async (mode: "save" | "clear") => {
+    if (
+      !isSignedIn ||
+      isSavingSandboxBudget ||
+      !isSandboxBillingConfigured
+    ) {
+      return;
+    }
+
+    let sandboxUsageBudgetCents: number | null;
+
+    if (mode === "clear") {
+      sandboxUsageBudgetCents = null;
+    } else if (parsedSandboxBudgetInput.kind === "empty") {
+      sandboxUsageBudgetCents = null;
+    } else if (parsedSandboxBudgetInput.kind === "invalid") {
+      setSandboxBudgetError("Enter a positive dollar amount with up to two decimals.");
+      return;
+    } else {
+      sandboxUsageBudgetCents = parsedSandboxBudgetInput.cents;
+    }
+
+    setIsSavingSandboxBudget(true);
+    setSandboxBudgetError(null);
+
+    try {
+      const response = await fetch("/api/account/sandbox/status", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          sandboxUsageBudgetCents,
+        }),
+      });
+      const result = (await response.json()) as
+        | SandboxSubscriptionStatusResponse
+        | { error?: string };
+
+      if (!response.ok) {
+        throw new Error(
+          "error" in result
+            ? result.error || "Unable to update sandbox budget"
+            : "Unable to update sandbox budget",
+        );
+      }
+
+      if (
+        !("subscriptionStatus" in result) ||
+        !("usageStatus" in result) ||
+        !("canManageSubscription" in result) ||
+        !("billingConfigured" in result) ||
+        !("billingConfigurationMessage" in result)
+      ) {
+        throw new Error("Unexpected sandbox budget response");
+      }
+
+      setSubscriptionStatus(result.subscriptionStatus);
+      setSandboxUsageStatus(result.usageStatus);
+      setCanManageSubscription(result.canManageSubscription);
+      setIsSandboxBillingConfigured(result.billingConfigured);
+      setSandboxBillingConfigurationMessage(result.billingConfigurationMessage);
+      setSandboxBudgetInput(
+        formatSandboxBudgetInputValue(result.usageStatus?.budgetLimitCents),
+      );
+    } catch (error) {
+      setSandboxBudgetError(
+        error instanceof Error ? error.message : "Unable to update sandbox budget",
+      );
+    } finally {
+      setIsSavingSandboxBudget(false);
     }
   };
 
@@ -755,6 +1003,36 @@ export function AgentsContent({
     ? sandboxBillingConfigurationMessage ??
       "Sandbox billing is not configured for this environment yet."
     : null;
+  const sandboxReportedUsageLabel = formatUsdFromMicrocents(
+    sandboxUsageStatus?.reportedUsageMicrocents ?? 0,
+  );
+  const sandboxReservedUsageLabel = formatUsdFromMicrocents(
+    sandboxUsageStatus?.reservedUsageMicrocents ?? 0,
+  );
+  const sandboxProjectedUsageLabel = formatUsdFromMicrocents(
+    sandboxUsageStatus?.projectedUsageMicrocents ?? 0,
+  );
+  const sandboxBudgetLimitLabel =
+    sandboxUsageStatus?.budgetLimitCents !== undefined
+      ? formatUsdFromCents(sandboxUsageStatus.budgetLimitCents)
+      : "No cap";
+  const sandboxBudgetRemainingLabel =
+    sandboxUsageStatus?.remainingBudgetMicrocents !== undefined
+      ? formatUsdFromMicrocents(sandboxUsageStatus.remainingBudgetMicrocents)
+      : null;
+  const sandboxRateHourlyLabel = sandboxUsageStatus
+    ? formatUsdFromMicrocents(sandboxUsageStatus.rateMicrocentsPerHour)
+    : null;
+  const sandboxUsageSummary = sandboxUsageStatus
+    ? sandboxUsageStatus.reservedUsageMicrocents > 0
+      ? `Current cycle spend is ${sandboxReportedUsageLabel}, with ${sandboxReservedUsageLabel} still reserved while active sandboxes remain open. Charges settle through the saved card on the Verified subscription.`
+      : `Current cycle metered spend is ${sandboxReportedUsageLabel}. Charges settle through the saved card on the Verified subscription on top of the $10 monthly plan.`
+    : "Sandbox runtime is metered separately from the monthly Verified plan.";
+  const sandboxBudgetSummary = sandboxUsageStatus
+    ? sandboxUsageStatus.budgetLimitCents !== undefined
+      ? `${sandboxBudgetRemainingLabel} remains before new sandbox runs are blocked.${sandboxUsageStatus.usingDefaultBudget ? " This account is currently using the deployment default limit." : ""}`
+      : "No budget cap is set yet. Add a profile-level limit to stop new runs before metered sandbox usage grows beyond your target spend."
+    : "Configure a budget cap after billing is enabled to limit metered sandbox usage.";
   const headerKicker = header?.kicker ?? "Account agents";
   const headerTitle = header?.title ?? "Agents";
   const headerMeta = header?.meta;
@@ -782,7 +1060,9 @@ export function AgentsContent({
             <h2>Verified Access</h2>
             <p>
               Verified access lets your agents use sandbox environments to run code, test
-              benchmarks, and produce intermediate results for ongoing research.
+              benchmarks, and produce intermediate results for ongoing research. Sandbox
+              runtime is metered on top of the $10/month Verified subscription and charged
+              through the saved card on file.
             </p>
           </div>
 
@@ -796,6 +1076,16 @@ export function AgentsContent({
               <span className="agents-billing-label">Subscription</span>
               <strong>{formatSubscriptionState(subscriptionStatus)}</strong>
               <p>{formatSubscriptionSummary(subscriptionStatus)}</p>
+            </article>
+            <article className="agents-billing-card">
+              <span className="agents-billing-label">Sandbox Usage</span>
+              <strong>{sandboxProjectedUsageLabel}</strong>
+              <p>{sandboxUsageSummary}</p>
+            </article>
+            <article className="agents-billing-card">
+              <span className="agents-billing-label">Budget Limit</span>
+              <strong>{sandboxBudgetLimitLabel}</strong>
+              <p>{sandboxBudgetSummary}</p>
             </article>
           </div>
 
@@ -840,6 +1130,83 @@ export function AgentsContent({
             >
               {isManagingSandboxBilling ? "Opening..." : "Manage Subscription"}
             </button>
+          </div>
+
+          <div className="agents-sandbox-budget-shell">
+            <div className="agents-sandbox-budget-copy">
+              <span className="agents-billing-label">On-Demand Sandbox Billing</span>
+              <p>
+                Metered sandbox usage rolls into the same subscription-backed billing
+                relationship and charges the saved card on file. New sandbox runs are
+                blocked once the projected cycle spend would cross your profile limit.
+              </p>
+              {sandboxRateHourlyLabel ? (
+                <p>
+                  Current runtime rate: approximately <strong>{sandboxRateHourlyLabel}/hour</strong>.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="agents-sandbox-budget-form">
+              <label className="agents-token-label" htmlFor="sandbox-budget-limit-input">
+                Budget limit (USD)
+              </label>
+              <div className="agents-sandbox-budget-controls">
+                <input
+                  className="agents-token-input agents-sandbox-budget-input"
+                  disabled={!isSandboxBillingConfigured || isSavingSandboxBudget}
+                  id="sandbox-budget-limit-input"
+                  inputMode="decimal"
+                  onChange={(event) => {
+                    setSandboxBudgetInput(event.target.value);
+                    setSandboxBudgetError(null);
+                  }}
+                  placeholder="No cap"
+                  type="text"
+                  value={sandboxBudgetInput}
+                />
+                <button
+                  className="agents-action"
+                  disabled={
+                    !isSandboxBillingConfigured ||
+                    isSavingSandboxBudget ||
+                    parsedSandboxBudgetInput.kind === "invalid"
+                  }
+                  onClick={() => {
+                    void handleSaveSandboxBudget("save");
+                  }}
+                  type="button"
+                >
+                  {isSavingSandboxBudget ? "Saving..." : "Save Limit"}
+                </button>
+                <button
+                  className="agents-action"
+                  disabled={
+                    !isSandboxBillingConfigured ||
+                    isSavingSandboxBudget ||
+                    (sandboxUsageStatus?.budgetLimitCents === undefined &&
+                      !sandboxUsageStatus?.usingDefaultBudget)
+                  }
+                  onClick={() => {
+                    void handleSaveSandboxBudget("clear");
+                  }}
+                  type="button"
+                >
+                  Clear Limit
+                </button>
+              </div>
+              <p className="agents-sandbox-budget-note">
+                Leave the field blank to remove an account-specific cap.
+                {sandboxUsageStatus?.usingDefaultBudget
+                  ? " Clearing the override will fall back to the deployment default limit."
+                  : ""}
+              </p>
+              {sandboxBudgetError ? (
+                <p className="agents-sandbox-budget-note agents-sandbox-budget-note-error">
+                  {sandboxBudgetError}
+                </p>
+              ) : null}
+            </div>
           </div>
 
           {sandboxBillingUnavailableMessage || sandboxBillingError ? (

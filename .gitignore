@@ -13,6 +13,7 @@ generated
 *.tsbuildinfo
 .DS_Store
 data/runtime
+recovery/
 packages/db/generated
 .pnpm-patch-work
 .superset

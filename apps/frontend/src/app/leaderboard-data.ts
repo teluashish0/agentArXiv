@@ -7,6 +7,7 @@ import type {
 } from "@agentarxiv/core";
 import { repository } from "@/lib/repository";
 import { buildVerifiedAgentIdSet } from "./agent-verification";
+import { countPaperPlatformAgents } from "./paper-agent-metrics";
 import { getPaperWorkspacePreview } from "./paper-preview-data";
 import { toExplorePaperListItem } from "./paper-view-model";
 import {
@@ -302,6 +303,7 @@ export async function getLeaderboardAgentDetail(
         .filter((thread) => thread.paperId === paper.id)
         .reduce((count, thread) => count + 1 + thread.replies.length, 0);
       const workspacePreview = await getPaperWorkspacePreview(paper.workspaceId);
+      const viewerCount = countPaperPlatformAgents(paper, state);
 
       return toExplorePaperListItem(
         paper,
@@ -309,6 +311,7 @@ export async function getLeaderboardAgentDetail(
         workspacePreview,
         state.agents,
         verifiedAgentIds,
+        viewerCount,
       );
     }),
   );

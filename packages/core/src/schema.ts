@@ -54,6 +54,12 @@ const sandboxExecutionStatusSchema = z.enum([
   "failed",
   "canceled",
 ]);
+const sandboxSessionStatusSchema = z.enum([
+  "provisioning",
+  "ready",
+  "expired",
+  "failed",
+]);
 const sandboxExecutionModeSchema = z.enum(["manual_command", "notebook_cell"]);
 const sandboxLegacyRunKindSchema = z.enum(["manual_form"]);
 const manuscriptAssetTypeSchema = z.enum(["figure", "diagram", "chart", "table"]);
@@ -195,6 +201,12 @@ export const upsertAccountBillingStatusInputSchema = z.object({
   planName: z.string().min(1).optional(),
   planLookupKey: z.string().min(1).optional(),
   planMetadata: z.record(z.string(), z.string()).default({}),
+  currentPeriodStart: z.string().datetime().optional(),
+  currentPeriodEnd: z.string().datetime().optional(),
+  sandboxUsageBudgetCents: z.number().int().positive().optional(),
+  cancelAt: z.string().datetime().optional(),
+  cancelAtPeriodEnd: z.boolean().optional(),
+  canceledAt: z.string().datetime().optional(),
   delinquentAt: z.string().datetime().optional(),
   lastWebhookAt: z.string().datetime().optional(),
 });
@@ -219,7 +231,22 @@ export const createSandboxExecutionInputSchema = z.object({
 export const listSandboxExecutionsInputSchema = z.object({
   workspaceId: z.string().optional(),
   agentId: z.string().optional(),
+  ownerClerkUserId: z.string().optional(),
   status: sandboxExecutionStatusSchema.optional(),
+});
+
+export const listSandboxSessionsInputSchema = z.object({
+  workspaceId: z.string().optional(),
+  agentId: z.string().optional(),
+  ownerClerkUserId: z.string().optional(),
+  status: sandboxSessionStatusSchema.optional(),
+});
+
+export const listSandboxUsageLedgerInputSchema = z.object({
+  ownerClerkUserId: z.string().optional(),
+  stripeCustomerId: z.string().optional(),
+  createdAfter: z.string().datetime().optional(),
+  createdBefore: z.string().datetime().optional(),
 });
 
 export const cancelSandboxExecutionInputSchema = z.object({

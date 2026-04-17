@@ -13,6 +13,9 @@ import { createTestState } from "./test-fixture-state";
 describe("FileStoreRepository", () => {
   let tempDirectory = "";
   let repository: FileStoreRepository;
+  const originalMcpEndpoint = process.env.AGENTARXIV_MCP_ENDPOINT;
+  const originalSandboxUsageRate =
+    process.env.AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND;
   const registrationInput = {
     displayName: "Atlas Review",
     handle: "atlas-review",
@@ -28,6 +31,8 @@ describe("FileStoreRepository", () => {
 
   beforeEach(async () => {
     tempDirectory = await mkdtemp(path.join(tmpdir(), "agentarxiv-core-"));
+    process.env.AGENTARXIV_MCP_ENDPOINT = "http://localhost:4001/mcp";
+    process.env.AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND = "0.00003025";
     repository = new FileStoreRepository(
       path.join(tempDirectory, "state.json"),
       {
@@ -38,6 +43,18 @@ describe("FileStoreRepository", () => {
 
   afterEach(async () => {
     await rm(tempDirectory, { recursive: true, force: true });
+    if (originalMcpEndpoint === undefined) {
+      delete process.env.AGENTARXIV_MCP_ENDPOINT;
+    } else {
+      process.env.AGENTARXIV_MCP_ENDPOINT = originalMcpEndpoint;
+    }
+
+    if (originalSandboxUsageRate === undefined) {
+      delete process.env.AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND;
+    } else {
+      process.env.AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND =
+        originalSandboxUsageRate;
+    }
   });
 
   it("ranks Delta as the best missing collaborator for AgentArxiv", async () => {
@@ -184,6 +201,21 @@ describe("FileStoreRepository", () => {
     expect(await repository.authenticateAccountToken(accountToken.token)).toBe(
       "user_123",
     );
+  });
+
+  it("does not mark accounts as sandbox verified without persisted billing", async () => {
+    const registration = await repository.registerAgent(registrationInput, {
+      ownerClerkUserId: "user_123",
+    });
+
+    await expect(repository.getAccountBillingStatus("user_123")).resolves.toBeUndefined();
+    await expect(
+      repository.getAgentSandboxStatus(registration.agent.id),
+    ).resolves.toMatchObject({
+      agentId: registration.agent.id,
+      verifiedProfile: false,
+      sandboxEligibility: "unverified",
+    });
   });
 
   it("reissues agent keys for the owning account and invalidates the previous key", async () => {
@@ -750,7 +782,7 @@ describe("FileStoreRepository", () => {
       executionId: "sexec_agentarxiv_running",
       ownerClerkUserId: "workspace_owner_1",
       stripeCustomerId: "cus_workspace_owner_1",
-      stripeMeterEventName: "sandbox_runtime_minutes",
+      stripeMeterEventName: "sandbox_runtime_seconds",
       stripeMeterEventIdentifier: "meter_event_duplicate_usage",
       meterValue: 2,
       runtimeSeconds: 119,
@@ -761,7 +793,7 @@ describe("FileStoreRepository", () => {
       executionId: "sexec_agentarxiv_running",
       ownerClerkUserId: "workspace_owner_1",
       stripeCustomerId: "cus_workspace_owner_1",
-      stripeMeterEventName: "sandbox_runtime_minutes",
+      stripeMeterEventName: "sandbox_runtime_seconds",
       stripeMeterEventIdentifier: "meter_event_duplicate_usage",
       meterValue: 2,
       runtimeSeconds: 119,
@@ -779,6 +811,42 @@ describe("FileStoreRepository", () => {
       meterValue: 2,
       runtimeSeconds: 119,
     });
+  });
+
+  it("blocks new sandbox runs when the projected account usage exceeds the budget cap", async () => {
+    const budgetCappedRepository = new FileStoreRepository(
+      path.join(tempDirectory, "budget-capped-state.json"),
+      {
+        initialState: {
+          ...createTestState(),
+          accountBillingStatuses: [
+            {
+              ...(createTestState().accountBillingStatuses?.[0] ?? {
+                id: "acctbill_workspace_owner_1",
+                ownerClerkUserId: "workspace_owner_1",
+                billingState: "active" as const,
+                sandboxEligibility: "verified" as const,
+                planMetadata: {},
+                createdAt: "2026-04-01T00:00:00.000Z",
+                updatedAt: "2026-04-01T00:00:00.000Z",
+              }),
+              sandboxUsageBudgetCents: 4,
+            },
+          ],
+        },
+      },
+    );
+
+    await expect(
+      budgetCappedRepository.createSandboxExecution({
+        workspaceId: "neural-computers",
+        agentId: "agent_kairo",
+        objective:
+          "Run another benchmark pass even though the account is already near its sandbox spend limit.",
+        command: "python rerun.py",
+        timeoutSeconds: 900,
+      }),
+    ).rejects.toThrow("budget limit");
   });
 
   it("sends and accepts an invite, then adds the agent to the workspace roster", async () => {

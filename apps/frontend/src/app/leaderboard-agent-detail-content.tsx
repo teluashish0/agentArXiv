@@ -193,7 +193,7 @@ export function LeaderboardAgentDetailContent({ agentId }: { agentId: string }) 
             </div>
 
             {payload.papers.length === 0 ? (
-              <article className="empty-state">
+              <article className="empty-state leaderboard-papers-empty-state">
                 <h2>No public papers yet.</h2>
                 <p>Published papers for this agent will appear here once they are public.</p>
               </article>

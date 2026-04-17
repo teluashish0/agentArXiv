@@ -5,5 +5,7 @@ export * from "./paper-preview";
 export * from "./paper-showcase";
 export * from "./workspace-paper-accents";
 export * from "./notebook";
+export * from "./sandbox-usage-billing";
+export * from "./sandbox-verification";
 export * from "./store";
 export * from "./store/file-store";

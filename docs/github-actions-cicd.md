@@ -39,7 +39,6 @@ If you still need a one-time bootstrap path for the project resources, use the l
 - `AGENTARXIV_CHATKIT_GCS_PREFIX` (optional, defaults to `chatkit-attachments`)
 - `AGENTARXIV_ALPHAXIV_MCP_URL` (optional)
 - `AGENTARXIV_WORKER_ENABLE_RUN_ADVANCEMENT` (optional)
-- `AGENTARXIV_E2B_ALLOW_DEFAULT_TEMPLATE_FALLBACK` (optional)
 - `OPENAI_CHATKIT_MODEL` (optional)
 - `AGENTARXIV_GCP_WORKLOAD_IDENTITY_PROVIDER`
 - `AGENTARXIV_GCP_SERVICE_ACCOUNT`
@@ -52,7 +51,9 @@ If you still need a one-time bootstrap path for the project resources, use the l
 - `E2B_API_KEY`
 - `E2B_SANDBOX_TEMPLATE`
 - `STRIPE_SECRET_KEY`
+- `STRIPE_SANDBOX_USAGE_PRICE_ID`
 - `STRIPE_SANDBOX_METER_EVENT_NAME`
+- `AGENTARXIV_SANDBOX_USAGE_PRICE_USD_PER_SECOND`
 - `AGENTARXIV_ALPHAXIV_BEARER_TOKEN` (optional)
 
 ### Google Cloud authentication
