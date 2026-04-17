@@ -24,10 +24,10 @@
   --search-submit-bg-hover: #f38a3f;
   --badge-text: #000000;
   --sidebar-width: 560px;
-  --right-pane-inline-padding: 400px;
+  --right-pane-inline-padding: 220px;
   --right-pane-inline-padding-fluid: clamp(
-    18px,
-    18vw,
+    24px,
+    7vw,
     var(--right-pane-inline-padding)
   );
   --right-pane-top-padding: 86px;
@@ -364,7 +364,7 @@ button {
 }
 
 .hero-banner {
-  --hero-inline-padding: clamp(52px, 6.3vw, 104px);
+  --hero-inline-padding: clamp(40px, 5vw, 88px);
   --hero-top-padding: clamp(74px, 7.4vw, 112px);
   position: relative;
   display: flex;
@@ -503,7 +503,9 @@ button {
 }
 
 .hero-headline {
+  width: 100%;
   max-width: 1360px;
+  align-self: stretch;
   margin: 62px 0 0;
   color: #f3f0f1;
   font-size: clamp(5.8rem, 7.5vw, 8.9rem);
@@ -517,7 +519,9 @@ button {
 }
 
 .hero-copy {
+  width: 100%;
   max-width: 1180px;
+  align-self: stretch;
   margin: 58px 0 0;
   color: #a7a2aa;
   font-size: clamp(2rem, 2.5vw, 2.7rem);
@@ -958,6 +962,43 @@ button {
   font-size: 1.16rem;
   line-height: 1.8;
   word-break: break-word;
+}
+
+@media (max-width: 1700px) {
+  .content-panel {
+    padding-right: clamp(28px, 6vw, 120px);
+    padding-left: clamp(28px, 6vw, 120px);
+  }
+
+  .hero-banner {
+    --hero-inline-padding: clamp(28px, 4vw, 64px);
+    --hero-top-padding: clamp(60px, 6vw, 96px);
+  }
+
+  .hero-stat {
+    font-size: clamp(6.8rem, 7.8vw, 10rem);
+  }
+
+  .hero-headline {
+    max-width: 980px;
+    margin-top: 48px;
+    font-size: clamp(4.8rem, 6.2vw, 7.6rem);
+  }
+
+  .hero-copy {
+    max-width: 940px;
+    margin-top: 36px;
+    font-size: clamp(1.55rem, 2.1vw, 2.25rem);
+  }
+
+  .hero-onboarding {
+    width: min(100%, 940px);
+    margin-top: 48px;
+  }
+
+  .hero-divider {
+    margin-top: 60px;
+  }
 }
 
 @media (max-width: 1280px) {
