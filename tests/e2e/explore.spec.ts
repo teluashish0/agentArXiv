@@ -440,12 +440,34 @@ test("explore page renders AgentArxiv research feed", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("explore hero stays size-stable on large desktop widths", async ({ page }) => {
+test("explore public surface stays fluid on large desktop widths", async ({ page }) => {
   await page.route("**/api/papers**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ items: [], platformAgentCount: 123 }),
+      body: JSON.stringify({
+        items: [
+          {
+            id: "paper-fluid-layouts",
+            title: "Fluid Layouts for Agent Papers",
+            authors: ["Agent One"],
+            authorDetails: [{ name: "Agent One", agentId: "agent_one" }],
+            date: "Apr 17, 2026",
+            summary: "Testing fluid public paper surfaces across desktop widths.",
+            showcase: "Testing fluid public paper surfaces across desktop widths.",
+            tags: ["Responsive", "CSS"],
+            likes: 12,
+            hotScore: 40,
+            sourceUrl: "https://example.com/papers/paper-fluid-layouts",
+            archiveId: "AgentArxiv:paper-fluid-layouts",
+            publishedIn: "AgentArxiv",
+            focus: "Testing fluid public paper surfaces across desktop widths.",
+            discussionCount: 2,
+            previewImagePath: "/mock-paper-preview.png",
+          },
+        ],
+        platformAgentCount: 123,
+      }),
     });
   });
 
@@ -460,6 +482,10 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
       const brandName = document.querySelector(".brand-name");
       const navLabel = document.querySelector(".nav-label");
       const navItem = document.querySelector(".nav-item");
+      const searchSubmit = document.querySelector(".search-submit");
+      const paperLink = document.querySelector(".paper-link");
+      const paperBookmark = document.querySelector(".paper-bookmark");
+      const paperPreview = document.querySelector(".paper-preview-image-wrap");
 
       if (
         !(headline instanceof HTMLElement) ||
@@ -467,7 +493,11 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
         !(sidebar instanceof HTMLElement) ||
         !(brandName instanceof HTMLElement) ||
         !(navLabel instanceof HTMLElement) ||
-        !(navItem instanceof HTMLElement)
+        !(navItem instanceof HTMLElement) ||
+        !(searchSubmit instanceof HTMLElement) ||
+        !(paperLink instanceof HTMLElement) ||
+        !(paperBookmark instanceof HTMLElement) ||
+        !(paperPreview instanceof HTMLElement)
       ) {
         throw new Error("Missing explore hero elements");
       }
@@ -485,6 +515,10 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
         brandFontSize: Number.parseFloat(getComputedStyle(brandName).fontSize),
         navLabelFontSize: Number.parseFloat(getComputedStyle(navLabel).fontSize),
         navItemMinHeight: Number.parseFloat(getComputedStyle(navItem).minHeight),
+        searchSubmitHeight: Number.parseFloat(getComputedStyle(searchSubmit).height),
+        paperLinkFontSize: Number.parseFloat(getComputedStyle(paperLink).fontSize),
+        paperBookmarkHeight: Number.parseFloat(getComputedStyle(paperBookmark).height),
+        previewMinHeight: Number.parseFloat(getComputedStyle(paperPreview).minHeight),
       };
     });
   }
@@ -514,38 +548,68 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
   expect(desktopMetrics.navItemMinHeight).toBeLessThan(wideMetrics.navItemMinHeight);
   expect(desktopMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
   expect(wideMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
+  expect(baseMetrics.searchSubmitHeight).toBeLessThan(desktopMetrics.searchSubmitHeight);
+  expect(desktopMetrics.searchSubmitHeight).toBeLessThan(wideMetrics.searchSubmitHeight);
+  expect(wideMetrics.searchSubmitHeight).toBeLessThanOrEqual(60);
+  expect(baseMetrics.paperLinkFontSize).toBeLessThanOrEqual(24.75);
+  expect(desktopMetrics.paperLinkFontSize).toBeLessThanOrEqual(24.75);
+  expect(wideMetrics.paperLinkFontSize).toBeLessThanOrEqual(24.75);
+  expect(baseMetrics.paperBookmarkHeight).toBeLessThan(desktopMetrics.paperBookmarkHeight);
+  expect(desktopMetrics.paperBookmarkHeight).toBeLessThan(wideMetrics.paperBookmarkHeight);
+  expect(wideMetrics.paperBookmarkHeight).toBeLessThanOrEqual(72.5);
+  expect(baseMetrics.previewMinHeight).toBeLessThan(desktopMetrics.previewMinHeight);
+  expect(desktopMetrics.previewMinHeight).toBeLessThan(wideMetrics.previewMinHeight);
+  expect(wideMetrics.previewMinHeight).toBeLessThanOrEqual(592.5);
   expect(Math.abs(baseMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
   expect(Math.abs(desktopMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
   expect(Math.abs(wideMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
 });
 
 test("sign-in view uses a compact desktop auth layout", async ({ page }) => {
-  await page.setViewportSize({ width: 2048, height: 1152 });
-  await page.goto("/sign-in", { waitUntil: "networkidle" });
+  async function captureAuthMetrics(width: number) {
+    await page.setViewportSize({ width, height: 1152 });
+    await page.goto("/sign-in", { waitUntil: "networkidle" });
 
-  const metrics = await page.evaluate(() => {
-    const sidebar = document.querySelector(".sidebar");
-    const heading = document.querySelector(".auth-heading");
-    const authBox = document.querySelector(".auth-box");
+    return page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar");
+      const heading = document.querySelector(".auth-heading");
+      const authBox = document.querySelector(".auth-box");
+      const oauthButton = document.querySelector(".auth-oauth-button");
 
-    if (
-      !(sidebar instanceof HTMLElement) ||
-      !(heading instanceof HTMLElement) ||
-      !(authBox instanceof HTMLElement)
-    ) {
-      throw new Error("Missing auth layout elements");
-    }
+      if (
+        !(sidebar instanceof HTMLElement) ||
+        !(heading instanceof HTMLElement) ||
+        !(authBox instanceof HTMLElement) ||
+        !(oauthButton instanceof HTMLElement)
+      ) {
+        throw new Error("Missing auth layout elements");
+      }
 
-    return {
-      sidebarWidth: Number.parseFloat(getComputedStyle(sidebar).width),
-      headingFontSize: Number.parseFloat(getComputedStyle(heading).fontSize),
-      authBoxWidth: Number.parseFloat(getComputedStyle(authBox).width),
-    };
-  });
+      return {
+        sidebarWidth: Number.parseFloat(getComputedStyle(sidebar).width),
+        headingFontSize: Number.parseFloat(getComputedStyle(heading).fontSize),
+        authBoxWidth: Number.parseFloat(getComputedStyle(authBox).width),
+        oauthButtonHeight: Number.parseFloat(getComputedStyle(oauthButton).minHeight),
+      };
+    });
+  }
 
-  expect(metrics.sidebarWidth).toBeLessThanOrEqual(320.5);
-  expect(metrics.headingFontSize).toBeLessThanOrEqual(72);
-  expect(metrics.authBoxWidth).toBeLessThanOrEqual(560.5);
+  const baseMetrics = await captureAuthMetrics(1728);
+  const desktopMetrics = await captureAuthMetrics(2048);
+  const wideMetrics = await captureAuthMetrics(2400);
+
+  expect(baseMetrics.sidebarWidth).toBeLessThan(desktopMetrics.sidebarWidth);
+  expect(desktopMetrics.sidebarWidth).toBeLessThan(wideMetrics.sidebarWidth);
+  expect(wideMetrics.sidebarWidth).toBeLessThanOrEqual(240.5);
+  expect(baseMetrics.headingFontSize).toBeLessThan(desktopMetrics.headingFontSize);
+  expect(desktopMetrics.headingFontSize).toBeLessThanOrEqual(72);
+  expect(wideMetrics.headingFontSize).toBeLessThanOrEqual(72);
+  expect(baseMetrics.authBoxWidth).toBeLessThanOrEqual(560.5);
+  expect(desktopMetrics.authBoxWidth).toBeLessThanOrEqual(560.5);
+  expect(wideMetrics.authBoxWidth).toBeLessThanOrEqual(560.5);
+  expect(baseMetrics.oauthButtonHeight).toBeLessThan(desktopMetrics.oauthButtonHeight);
+  expect(desktopMetrics.oauthButtonHeight).toBeLessThan(wideMetrics.oauthButtonHeight);
+  expect(wideMetrics.oauthButtonHeight).toBeLessThanOrEqual(59.5);
 });
 
 test("explore empty state stays visible without seeded public papers", async ({ page }) => {
@@ -1194,9 +1258,100 @@ test("leaderboard page renders ranked agents and pagination", async ({ page }) =
 
   await expect(page.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
   await expect(page.getByText("Nova Literature")).toBeVisible();
-  await expect(page.locator(".leaderboard-row .verified-pill")).toBeVisible();
+  await expect(page.locator(".leaderboard-row .verified-name-icon")).toBeVisible();
   await expect(page.getByText("412")).toBeVisible();
   await expect(page.getByText("Page 1 of 2")).toBeVisible();
+});
+
+test("leaderboard surface stays fluid on large desktop widths", async ({ page }) => {
+  await page.route("**/api/leaderboard**", async (route) => {
+    const url = route.request().url();
+
+    if (url.includes("/api/leaderboard/")) {
+      await route.fallback();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "agent_nova",
+            rank: 1,
+            handle: "nova-lit",
+            displayName: "Nova Literature",
+            headline: "Literature strategist for grounded manuscript planning.",
+            verified: true,
+            karma: 412,
+            metrics: {
+              authoredPaperCount: 1,
+              coauthoredPaperCount: 1,
+              publicPaperCount: 2,
+              threadCount: 2,
+              replyCount: 4,
+              totalDiscussionPosts: 6,
+              paperUpvotes: 24,
+              paperDownvotes: 3,
+              commentUpvotes: 12,
+              commentDownvotes: 1,
+              voteBalance: 32,
+            },
+          },
+        ],
+        page: 1,
+        totalItems: 12,
+        totalPages: 2,
+        pageSize: 10,
+      }),
+    });
+  });
+
+  async function captureLeaderboardMetrics(width: number) {
+    await page.setViewportSize({ width, height: 1152 });
+    await page.goto("/leaderboard", { waitUntil: "networkidle" });
+
+    return page.evaluate(() => {
+      const table = document.querySelector(".leaderboard-table");
+      const row = document.querySelector(".leaderboard-row");
+      const agentName = document.querySelector(".leaderboard-agent-name");
+      const pageLink = document.querySelector(".leaderboard-page-link");
+
+      if (
+        !(table instanceof HTMLElement) ||
+        !(row instanceof HTMLElement) ||
+        !(agentName instanceof HTMLElement) ||
+        !(pageLink instanceof HTMLElement)
+      ) {
+        throw new Error("Missing leaderboard layout elements");
+      }
+
+      return {
+        tableRadius: Number.parseFloat(getComputedStyle(table).borderTopLeftRadius),
+        rowPaddingTop: Number.parseFloat(getComputedStyle(row).paddingTop),
+        agentNameFontSize: Number.parseFloat(getComputedStyle(agentName).fontSize),
+        pageLinkHeight: Number.parseFloat(getComputedStyle(pageLink).height),
+      };
+    });
+  }
+
+  const baseMetrics = await captureLeaderboardMetrics(1728);
+  const desktopMetrics = await captureLeaderboardMetrics(2048);
+  const wideMetrics = await captureLeaderboardMetrics(2400);
+
+  expect(baseMetrics.tableRadius).toBeLessThan(desktopMetrics.tableRadius);
+  expect(desktopMetrics.tableRadius).toBeLessThanOrEqual(wideMetrics.tableRadius);
+  expect(wideMetrics.tableRadius).toBeLessThanOrEqual(32);
+  expect(baseMetrics.rowPaddingTop).toBeLessThan(desktopMetrics.rowPaddingTop);
+  expect(desktopMetrics.rowPaddingTop).toBeLessThanOrEqual(wideMetrics.rowPaddingTop);
+  expect(wideMetrics.rowPaddingTop).toBeLessThanOrEqual(20);
+  expect(baseMetrics.agentNameFontSize).toBeLessThanOrEqual(22.75);
+  expect(desktopMetrics.agentNameFontSize).toBeLessThanOrEqual(22.75);
+  expect(wideMetrics.agentNameFontSize).toBeLessThanOrEqual(22.75);
+  expect(baseMetrics.pageLinkHeight).toBeLessThan(desktopMetrics.pageLinkHeight);
+  expect(desktopMetrics.pageLinkHeight).toBeLessThan(wideMetrics.pageLinkHeight);
+  expect(wideMetrics.pageLinkHeight).toBeLessThanOrEqual(44);
 });
 
 test("leaderboard agent row opens the papers view with a back link", async ({ page }) => {
