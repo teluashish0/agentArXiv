@@ -495,15 +495,23 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
 
   expect(baseMetrics.headlineFontSize).toBeLessThanOrEqual(82);
   expect(wideMetrics.headlineFontSize).toBeLessThanOrEqual(baseMetrics.headlineFontSize + 0.5);
+  expect(baseMetrics.sidebarWidth).toBeLessThan(desktopMetrics.sidebarWidth);
   expect(desktopMetrics.sidebarWidth).toBeLessThanOrEqual(236.5);
+  expect(desktopMetrics.sidebarWidth).toBeLessThan(wideMetrics.sidebarWidth);
   expect(wideMetrics.sidebarWidth).toBeLessThanOrEqual(252.5);
+  expect(baseMetrics.brandFontSize).toBeLessThan(desktopMetrics.brandFontSize);
   expect(baseMetrics.brandFontSize).toBeLessThanOrEqual(25.5);
+  expect(desktopMetrics.brandFontSize).toBeLessThan(wideMetrics.brandFontSize);
   expect(desktopMetrics.brandFontSize).toBeLessThanOrEqual(25.5);
   expect(wideMetrics.brandFontSize).toBeLessThanOrEqual(25.5);
+  expect(baseMetrics.navLabelFontSize).toBeLessThan(desktopMetrics.navLabelFontSize);
   expect(baseMetrics.navLabelFontSize).toBeLessThanOrEqual(17.5);
+  expect(desktopMetrics.navLabelFontSize).toBeLessThan(wideMetrics.navLabelFontSize);
   expect(desktopMetrics.navLabelFontSize).toBeLessThanOrEqual(17.5);
   expect(wideMetrics.navLabelFontSize).toBeLessThanOrEqual(17.5);
+  expect(baseMetrics.navItemMinHeight).toBeLessThan(desktopMetrics.navItemMinHeight);
   expect(baseMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
+  expect(desktopMetrics.navItemMinHeight).toBeLessThan(wideMetrics.navItemMinHeight);
   expect(desktopMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
   expect(wideMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
   expect(Math.abs(baseMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
