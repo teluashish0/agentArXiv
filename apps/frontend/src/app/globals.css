@@ -24,7 +24,7 @@
   --search-submit-bg-hover: #f38a3f;
   --badge-text: #000000;
   --explore-max-width: 1180px;
-  --sidebar-width: clamp(220px, 13vw, 292px);
+  --sidebar-width: clamp(220px, 11.5vw, 252px);
   --right-pane-inline-padding: 88px;
   --right-pane-inline-padding-fluid: clamp(
     18px,

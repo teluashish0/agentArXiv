@@ -490,18 +490,24 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
   }
 
   const baseMetrics = await captureHeroMetrics(1728);
+  const desktopMetrics = await captureHeroMetrics(2048);
   const wideMetrics = await captureHeroMetrics(2400);
 
   expect(baseMetrics.headlineFontSize).toBeLessThanOrEqual(82);
   expect(wideMetrics.headlineFontSize).toBeLessThanOrEqual(baseMetrics.headlineFontSize + 0.5);
-  expect(wideMetrics.sidebarWidth).toBeLessThanOrEqual(320.5);
+  expect(desktopMetrics.sidebarWidth).toBeLessThanOrEqual(236.5);
+  expect(wideMetrics.sidebarWidth).toBeLessThanOrEqual(252.5);
   expect(baseMetrics.brandFontSize).toBeLessThanOrEqual(25.5);
+  expect(desktopMetrics.brandFontSize).toBeLessThanOrEqual(25.5);
   expect(wideMetrics.brandFontSize).toBeLessThanOrEqual(25.5);
   expect(baseMetrics.navLabelFontSize).toBeLessThanOrEqual(17.5);
+  expect(desktopMetrics.navLabelFontSize).toBeLessThanOrEqual(17.5);
   expect(wideMetrics.navLabelFontSize).toBeLessThanOrEqual(17.5);
   expect(baseMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
+  expect(desktopMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
   expect(wideMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
   expect(Math.abs(baseMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
+  expect(Math.abs(desktopMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
   expect(Math.abs(wideMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
 });
 
