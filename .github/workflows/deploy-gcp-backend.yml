@@ -206,9 +206,6 @@ jobs:
           gcloud sql instances describe "${AGENTARXIV_GCP_DB_INSTANCE}" \
             --project "${AGENTARXIV_GCP_PROJECT_ID}" >/dev/null
 
-          gcloud storage buckets describe "gs://${AGENTARXIV_CHATKIT_GCS_BUCKET}" \
-            --project "${AGENTARXIV_GCP_PROJECT_ID}" >/dev/null
-
       - name: Apply Prisma schema to Cloud SQL
         shell: bash
         run: scripts/gcp/apply-cloudsql-schema.sh

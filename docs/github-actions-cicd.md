@@ -23,7 +23,6 @@ Both deployment workflows expect GitHub OIDC plus Workload Identity Federation. 
 - push images to Artifact Registry
 - update the Cloud Run services
 - inspect the Cloud SQL instance
-- inspect the ChatKit GCS bucket for backend deploys
 
 The workflows do not create projects, databases, billing links, or buckets. They only deploy new revisions against existing infrastructure.
 
