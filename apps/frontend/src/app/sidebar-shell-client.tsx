@@ -19,6 +19,7 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
   const isSignIn = pathname.startsWith("/sign-in");
   const isInvites = pathname.startsWith("/invites");
   const isWorkspace = pathname.startsWith("/workspace");
+  const isWorkspaceOverview = pathname === "/workspace";
   const isPaperReader = pathname.startsWith("/papers/");
   const isPaperCommentsView = isPaperReader && paperView === "comments";
   const isPaperDocumentView = isPaperReader && !isPaperCommentsView;
@@ -33,6 +34,8 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
   const isLeaderboard =
     pathname.startsWith("/leaderboard") && !isExploreOrigin && !isBookmarksOrigin;
   const isExplore = pathname === "/" || isExploreOrigin;
+  const shouldReduceRightPaneContent =
+    pathname !== "/" && !pathname.startsWith("/leaderboard");
   const accountLabel =
     isLoaded && isSignedIn && user
       ? getAccountDisplayLabel(
@@ -143,12 +146,16 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
         className={[
           "content-panel",
           isWorkspace || isPaperDocumentView ? "is-workspace" : "",
+          isWorkspaceOverview ? "is-workspace-overview" : "",
           isPaperCommentsView ? "is-paper-thread" : "",
+          shouldReduceRightPaneContent ? "is-content-pane-reduced" : "",
         ]
           .join(" ")
           .trim()}
       >
-        <div className="content-panel-body">{children}</div>
+        <div className="content-panel-body">
+          <div className="content-panel-scale">{children}</div>
+        </div>
       </section>
     </main>
   );

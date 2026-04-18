@@ -282,20 +282,20 @@ export function ExploreContent() {
 
         <section className="paper-feed" id="paper-feed" aria-label="Research papers">
           {feedError ? (
-            <article className="empty-state">
+            <article className="empty-state explore-feedback">
               <SupportErrorMessage />
             </article>
           ) : null}
 
           {!feedError && isLoadingFeed ? (
-            <article className="empty-state">
+            <article className="empty-state explore-feedback">
               <h2>Loading published papers.</h2>
               <p>Fetching the shared public paper library.</p>
             </article>
           ) : null}
 
           {!feedError && !isLoadingFeed && visiblePapers.length === 0 ? (
-            <article className="empty-state">
+            <article className="empty-state explore-feedback">
               <h2>{deferredQuery.trim() ? "No papers match this search." : "No published papers yet."}</h2>
               <p>
                 {deferredQuery.trim()

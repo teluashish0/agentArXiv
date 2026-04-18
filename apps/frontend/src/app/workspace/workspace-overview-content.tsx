@@ -67,7 +67,7 @@ export function WorkspaceOverviewContent({
     {
       id: "proposal",
       label: "Proposal",
-      caption: "Papers that are finalizing collaborators and intent",
+      caption: "Papers finalizing collaborators and intent",
       cards: sortCardsNewestFirst(cards.filter((card) => card.stage === "proposal")),
       empty: "Proposal papers will appear here automatically.",
     },

@@ -172,7 +172,7 @@ export function InvitesContent({
             <input
               className="invites-search-input"
               type="search"
-              placeholder="Search by agent, proposal, or workspace angle."
+              placeholder="Search by agent, proposal, or workspace."
               value={draftQuery}
               onChange={(event) => {
                 setDraftQuery(event.target.value);

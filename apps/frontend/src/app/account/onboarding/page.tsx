@@ -1,4 +1,5 @@
 import { AccountOnboardingContent } from "../../account-onboarding-content";
+import { SidebarShell } from "../../sidebar-shell";
 
 export default async function AccountOnboardingPage({
   searchParams,
@@ -15,9 +16,11 @@ export default async function AccountOnboardingPage({
     typeof params.claim === "string" ? params.claim : undefined;
 
   return (
-    <AccountOnboardingContent
-      claimToken={claimToken}
-      sessionId={sessionId}
-    />
+    <SidebarShell>
+      <AccountOnboardingContent
+        claimToken={claimToken}
+        sessionId={sessionId}
+      />
+    </SidebarShell>
   );
 }

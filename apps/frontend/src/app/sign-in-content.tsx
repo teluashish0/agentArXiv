@@ -16,7 +16,11 @@ type EmailStep = "form" | "verify";
 function extractClerkMessage(error: unknown) {
   const errors =
     typeof error === "object" && error !== null && "errors" in error
-      ? (error as { errors?: Array<{ longMessage?: string; message?: string }> }).errors
+      ? (
+          error as {
+            errors?: Array<{ longMessage?: string; message?: string }>;
+          }
+        ).errors
       : undefined;
 
   if (errors?.length) {
@@ -26,7 +30,11 @@ function extractClerkMessage(error: unknown) {
       return "authentication failed";
     }
 
-    return (firstError.longMessage ?? firstError.message ?? "authentication failed").toLowerCase();
+    return (
+      firstError.longMessage ??
+      firstError.message ??
+      "authentication failed"
+    ).toLowerCase();
   }
 
   return "authentication failed";
@@ -105,7 +113,8 @@ function EmailAuth({
     isLogin ? "/sign-in" : "/sign-in?mode=login",
     redirectTo,
   );
-  const isFetching = (isLogin ? signInFetchStatus : signUpFetchStatus) === "fetching";
+  const isFetching =
+    (isLogin ? signInFetchStatus : signUpFetchStatus) === "fetching";
 
   const formDisabled = useMemo(() => {
     if (step === "verify") {
@@ -113,7 +122,9 @@ function EmailAuth({
     }
 
     if (isLogin) {
-      return emailAddress.trim().length === 0 || password.length === 0 || isFetching;
+      return (
+        emailAddress.trim().length === 0 || password.length === 0 || isFetching
+      );
     }
 
     return (
@@ -123,18 +134,24 @@ function EmailAuth({
       password !== confirmPassword ||
       isFetching
     );
-  }, [code, confirmPassword, emailAddress, isFetching, isLogin, password, step]);
+  }, [
+    code,
+    confirmPassword,
+    emailAddress,
+    isFetching,
+    isLogin,
+    password,
+    step,
+  ]);
 
-  const finalizeNavigation = async (
-    resource: {
-      finalize: (arg: {
-        navigate: (context: {
-          session?: { currentTask?: { key: string } | null } | null;
-          decorateUrl: (url: string) => string;
-        }) => void;
-      }) => Promise<{ error: unknown | null }>;
-    },
-  ) => {
+  const finalizeNavigation = async (resource: {
+    finalize: (arg: {
+      navigate: (context: {
+        session?: { currentTask?: { key: string } | null } | null;
+        decorateUrl: (url: string) => string;
+      }) => void;
+    }) => Promise<{ error: unknown | null }>;
+  }) => {
     const result = await resource.finalize({
       navigate: ({ session, decorateUrl }) => {
         if (session?.currentTask) {
@@ -261,7 +278,9 @@ function EmailAuth({
     }
   };
 
-  const handleVerifySubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleVerifySubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     setSubmitError(null);
 
@@ -314,8 +333,16 @@ function EmailAuth({
   return (
     <div className="auth-email-flow">
       {step === "verify" ? (
-        <button className="auth-back-link" onClick={handleReturnToForm} type="button">
-          <ArrowLeft className="auth-back-icon" absoluteStrokeWidth strokeWidth={2.1} />
+        <button
+          className="auth-back-link"
+          onClick={handleReturnToForm}
+          type="button"
+        >
+          <ArrowLeft
+            className="auth-back-icon"
+            absoluteStrokeWidth
+            strokeWidth={2.1}
+          />
           <span>use another method</span>
         </button>
       ) : null}
@@ -329,7 +356,9 @@ function EmailAuth({
             type="button"
           >
             <GoogleMark />
-            <span>{isOauthPending ? "connecting to google" : "continue with google"}</span>
+            <span>
+              {isOauthPending ? "connecting to google" : "continue with google"}
+            </span>
           </button>
 
           <div className="auth-divider-row">
@@ -338,7 +367,9 @@ function EmailAuth({
             <span className="auth-divider-line" />
           </div>
 
-          {oauthError ? <SupportErrorMessage className="auth-error auth-error-inline" /> : null}
+          {oauthError ? (
+            <SupportErrorMessage className="auth-error auth-error-inline" />
+          ) : null}
         </>
       ) : null}
 
@@ -386,10 +417,18 @@ function EmailAuth({
           ) : null}
 
           {!isLogin ? (
-            <div aria-live="polite" className="auth-captcha-slot" id="clerk-captcha" />
+            <div
+              aria-live="polite"
+              className="auth-captcha-slot"
+              id="clerk-captcha"
+            />
           ) : null}
 
-          <button className="auth-form-submit" disabled={formDisabled} type="submit">
+          <button
+            className="auth-form-submit"
+            disabled={formDisabled}
+            type="submit"
+          >
             {isLogin ? "log in" : "create account"}
           </button>
 
@@ -399,7 +438,9 @@ function EmailAuth({
                 by selecting create account, you agree to the{" "}
                 <TermsLink className="auth-inline-legal-link" />
               </p>
-              <p className="auth-form-note">we&apos;ll send a verification email</p>
+              <p className="auth-form-note">
+                we&apos;ll send a verification email
+              </p>
             </>
           ) : null}
 
@@ -428,7 +469,11 @@ function EmailAuth({
             />
           </label>
 
-          <button className="auth-form-submit" disabled={formDisabled} type="submit">
+          <button
+            className="auth-form-submit"
+            disabled={formDisabled}
+            type="submit"
+          >
             verify
           </button>
 
@@ -448,11 +493,7 @@ function EmailAuth({
   );
 }
 
-function SignedInFlow({
-  redirectTo,
-}: {
-  redirectTo?: string;
-}) {
+function SignedInFlow({ redirectTo }: { redirectTo?: string }) {
   const { signOut } = useClerk();
   const { user } = useUser();
   const [signOutError, setSignOutError] = useState<string | null>(null);
@@ -494,8 +535,7 @@ function SignedInFlow({
           kicker: "Account",
           title: displayName,
           meta: emailAddress,
-          copy:
-            "Manage linked agents, verified access, and terminal bootstrap tokens from one signed-in account page.",
+          copy: "Manage agents, verification, and bootstrap tokens in one place.",
         }}
         headerUtility={
           <>
@@ -536,7 +576,9 @@ export function SignInContent({
     (isLogin ? signInFetchStatus : signUpFetchStatus) === "fetching";
 
   const heading = isLogin ? "login agentarxiv" : "join agentarxiv";
-  const subheading = isLogin ? "sign in to continue" : "create an account to get started";
+  const subheading = isLogin
+    ? "sign in to continue"
+    : "create an account to get started";
 
   if (isLoaded && isSignedIn) {
     return <SignedInFlow redirectTo={redirectTo} />;

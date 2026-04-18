@@ -1,6 +1,12 @@
 "use client";
 
-import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -14,7 +20,13 @@ type AccountAgentSandboxStatus = {
   verifiedProfile: boolean;
   ineligibilityReason?: string;
   billingStatus?: {
-    billingState: "inactive" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
+    billingState:
+      | "inactive"
+      | "active"
+      | "past_due"
+      | "canceled"
+      | "unpaid"
+      | "incomplete";
     sandboxEligibility: "verified" | "unverified" | "blocked";
     planName?: string;
     planLookupKey?: string;
@@ -44,7 +56,13 @@ type AccountAccessToken = {
 type AccountTokenExpiryPreset = "30" | "60" | "90" | "custom";
 
 type AccountBillingStatus = {
-  billingState: "inactive" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
+  billingState:
+    | "inactive"
+    | "active"
+    | "past_due"
+    | "canceled"
+    | "unpaid"
+    | "incomplete";
   sandboxEligibility: "verified" | "unverified" | "blocked";
   planName?: string;
   currentPeriodStart?: string;
@@ -144,7 +162,10 @@ function formatSandboxBudgetInputValue(value?: number) {
     return "";
   }
 
-  return (value / 100).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+  return (value / 100)
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
 }
 
 function parseSandboxBudgetInput(value: string) {
@@ -163,7 +184,8 @@ function parseSandboxBudgetInput(value: string) {
   }
 
   const [dollarsPart, centsPart = ""] = trimmed.split(".");
-  const cents = Number(dollarsPart) * 100 + Number((centsPart + "00").slice(0, 2));
+  const cents =
+    Number(dollarsPart) * 100 + Number((centsPart + "00").slice(0, 2));
 
   if (!Number.isSafeInteger(cents) || cents <= 0) {
     return {
@@ -182,7 +204,11 @@ function addDays(value: Date, days: number) {
 }
 
 function addCalendarDays(value: Date, days: number) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate() + days);
+  return new Date(
+    value.getFullYear(),
+    value.getMonth(),
+    value.getDate() + days,
+  );
 }
 
 function addCalendarMonths(value: Date, months: number) {
@@ -198,7 +224,9 @@ function startOfCalendarMonth(value: Date) {
 }
 
 function toDateInputValue(value: Date) {
-  const localValue = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
+  const localValue = new Date(
+    value.getTime() - value.getTimezoneOffset() * 60_000,
+  );
   return localValue.toISOString().slice(0, 10);
 }
 
@@ -277,9 +305,14 @@ function isSameCalendarDay(left: Date, right: Date) {
 
 function getAccountTokenCalendarDays(viewMonth: Date) {
   const firstDayOfMonth = startOfCalendarMonth(viewMonth);
-  const calendarStart = addCalendarDays(firstDayOfMonth, -firstDayOfMonth.getDay());
+  const calendarStart = addCalendarDays(
+    firstDayOfMonth,
+    -firstDayOfMonth.getDay(),
+  );
 
-  return Array.from({ length: 42 }, (_, index) => addCalendarDays(calendarStart, index));
+  return Array.from({ length: 42 }, (_, index) =>
+    addCalendarDays(calendarStart, index),
+  );
 }
 
 function formatAccountTokenUsage(maxUses?: number) {
@@ -324,77 +357,6 @@ function hasBlockedVerification(status?: AccountBillingStatus | null) {
   );
 }
 
-function formatSubscriptionState(status?: AccountBillingStatus | null) {
-  if (!status) {
-    return "Not subscribed";
-  }
-
-  if (status.billingState === "active" && hasSubscriptionEnded(status)) {
-    return "Ended";
-  }
-
-  switch (status.billingState) {
-    case "active":
-      return "Active";
-    case "past_due":
-      return "Past due";
-    case "canceled":
-      return "Canceled";
-    case "unpaid":
-      return "Unpaid";
-    case "incomplete":
-      return "Incomplete";
-    default:
-      return "Inactive";
-  }
-}
-
-function formatSubscriptionSummary(status?: AccountBillingStatus | null) {
-  if (!status) {
-    return "No sandbox subscription is attached to this account yet.";
-  }
-
-  if (status.billingState === "active" && hasSubscriptionEnded(status)) {
-    const endedAt = status.cancelAt ?? status.currentPeriodEnd;
-
-    return endedAt
-      ? `This subscription ended on ${formatDate(endedAt)}. Subscribe again to restore sandbox access.`
-      : "This subscription has ended. Subscribe again to restore sandbox access.";
-  }
-
-  switch (status.billingState) {
-    case "active":
-      if (status.cancelAtPeriodEnd && status.currentPeriodEnd) {
-        return status.planName
-          ? `${status.planName} is active until ${formatDate(status.currentPeriodEnd)} and will not renew after that date.`
-          : `Sandbox access is active until ${formatDate(status.currentPeriodEnd)} and will not renew after that date.`;
-      }
-
-      if (status.currentPeriodEnd) {
-        return status.planName
-          ? `${status.planName} is active for this account and renews on ${formatDate(status.currentPeriodEnd)}.`
-          : `Sandbox access is active for this account and renews on ${formatDate(status.currentPeriodEnd)}.`;
-      }
-
-      return status.planName
-        ? `${status.planName} is active for this account.`
-        : "Sandbox access is active for this account.";
-    case "past_due":
-    case "unpaid":
-      return status.delinquentAt
-        ? `Payment is overdue since ${formatDate(status.delinquentAt)}. Update the subscription to restore sandbox access.`
-        : "Payment is overdue. Update the subscription to restore sandbox access.";
-    case "canceled":
-      return status.canceledAt
-        ? `This subscription was canceled on ${formatDate(status.canceledAt)}. Subscribe again to restore sandbox access.`
-        : "This subscription has been canceled. Subscribe again to restore sandbox access.";
-    case "incomplete":
-      return "Complete the subscription setup to activate sandbox access.";
-    default:
-      return "No active sandbox subscription is attached to this account yet.";
-  }
-}
-
 function formatVerificationState(status?: AccountBillingStatus | null) {
   return hasVerifiedSubscription(status) ? "Verified" : "Not verified";
 }
@@ -402,27 +364,27 @@ function formatVerificationState(status?: AccountBillingStatus | null) {
 function formatVerificationSummary(status?: AccountBillingStatus | null) {
   if (hasVerifiedSubscription(status)) {
     if (status?.cancelAtPeriodEnd && status.currentPeriodEnd) {
-      return `Sandbox execution is enabled for every agent owned by this account until ${formatDate(status.currentPeriodEnd)}.`;
+      return `Sandbox access is enabled until ${formatDate(status.currentPeriodEnd)}.`;
     }
 
     if (status?.currentPeriodEnd) {
-      return `Sandbox execution is enabled for every agent owned by this account. The subscription renews on ${formatDate(status.currentPeriodEnd)}.`;
+      return `Sandbox access is enabled. Renews ${formatDate(status.currentPeriodEnd)}.`;
     }
 
-    return "Sandbox execution is enabled for every agent owned by this account.";
+    return "Sandbox access is enabled.";
   }
 
   if (hasBlockedVerification(status)) {
     return status?.delinquentAt
-      ? `Sandbox access has been blocked since ${formatDate(status.delinquentAt)}. Update the subscription to restore verification.`
-      : "Sandbox access is blocked until the subscription is back in good standing.";
+      ? `Access blocked since ${formatDate(status.delinquentAt)}. Update billing to restore it.`
+      : "Access is blocked until billing is fixed.";
   }
 
   if (status?.billingState === "incomplete") {
-    return "Complete the subscription setup to verify this account for sandbox execution.";
+    return "Finish setup to verify this account.";
   }
 
-  return "Activate a sandbox subscription to verify this account for sandbox execution.";
+  return "Start a subscription to verify this account.";
 }
 
 async function fetchAccountAgents() {
@@ -433,7 +395,9 @@ async function fetchAccountAgents() {
 
   if (!response.ok) {
     throw new Error(
-      "error" in result ? result.error || "Unable to load agents" : "Unable to load agents",
+      "error" in result
+        ? result.error || "Unable to load agents"
+        : "Unable to load agents",
     );
   }
 
@@ -469,7 +433,10 @@ async function fetchSandboxBillingStatus(sessionId?: string | null) {
     );
   }
 
-  if (!("subscriptionStatus" in result) || !("canManageSubscription" in result)) {
+  if (
+    !("subscriptionStatus" in result) ||
+    !("canManageSubscription" in result)
+  ) {
     throw new Error("Unexpected sandbox subscription response");
   }
 
@@ -477,7 +444,10 @@ async function fetchSandboxBillingStatus(sessionId?: string | null) {
     throw new Error("Unexpected sandbox subscription response");
   }
 
-  if (!("billingConfigured" in result) || !("billingConfigurationMessage" in result)) {
+  if (
+    !("billingConfigured" in result) ||
+    !("billingConfigurationMessage" in result)
+  ) {
     throw new Error("Unexpected sandbox subscription response");
   }
 
@@ -518,33 +488,49 @@ export function AgentsContent({
   const [canManageSubscription, setCanManageSubscription] = useState(false);
   const [isSandboxBillingConfigured, setIsSandboxBillingConfigured] =
     useState(true);
-  const [sandboxBillingConfigurationMessage, setSandboxBillingConfigurationMessage] =
-    useState<string | null>(null);
+  const [
+    sandboxBillingConfigurationMessage,
+    setSandboxBillingConfigurationMessage,
+  ] = useState<string | null>(null);
   const [sandboxBudgetInput, setSandboxBudgetInput] = useState("");
-  const [accountToken, setAccountToken] = useState<AccountAccessToken | null>(null);
-  const [isAccountTokenDialogOpen, setIsAccountTokenDialogOpen] = useState(false);
-  const [isAccountTokenExpiryMenuOpen, setIsAccountTokenExpiryMenuOpen] = useState(false);
-  const [isAccountTokenCalendarOpen, setIsAccountTokenCalendarOpen] = useState(false);
+  const [accountToken, setAccountToken] = useState<AccountAccessToken | null>(
+    null,
+  );
+  const [isAccountTokenDialogOpen, setIsAccountTokenDialogOpen] =
+    useState(false);
+  const [isAccountTokenExpiryMenuOpen, setIsAccountTokenExpiryMenuOpen] =
+    useState(false);
+  const [isAccountTokenCalendarOpen, setIsAccountTokenCalendarOpen] =
+    useState(false);
   const [accountTokenExpiryPreset, setAccountTokenExpiryPreset] =
     useState<AccountTokenExpiryPreset>("30");
   const [accountTokenCustomExpiry, setAccountTokenCustomExpiry] = useState(() =>
     toDateInputValue(addDays(new Date(), 30)),
   );
-  const [accountTokenCalendarMonth, setAccountTokenCalendarMonth] = useState(() =>
-    startOfCalendarMonth(addDays(new Date(), 30)),
+  const [accountTokenCalendarMonth, setAccountTokenCalendarMonth] = useState(
+    () => startOfCalendarMonth(addDays(new Date(), 30)),
   );
   const [accountTokenMaxUses, setAccountTokenMaxUses] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [accountTokenError, setAccountTokenError] = useState<string | null>(null);
-  const [sandboxBillingError, setSandboxBillingError] = useState<string | null>(null);
-  const [sandboxBudgetError, setSandboxBudgetError] = useState<string | null>(null);
+  const [accountTokenError, setAccountTokenError] = useState<string | null>(
+    null,
+  );
+  const [sandboxBillingError, setSandboxBillingError] = useState<string | null>(
+    null,
+  );
+  const [sandboxBudgetError, setSandboxBudgetError] = useState<string | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreatingAccountToken, setIsCreatingAccountToken] = useState(false);
-  const [isManagingSandboxBilling, setIsManagingSandboxBilling] = useState(false);
+  const [isManagingSandboxBilling, setIsManagingSandboxBilling] =
+    useState(false);
   const [isSavingSandboxBudget, setIsSavingSandboxBudget] = useState(false);
   const [hasCopiedAccountToken, setHasCopiedAccountToken] = useState(false);
-  const accountTokenDialogPrimaryFieldRef = useRef<HTMLButtonElement | null>(null);
+  const accountTokenDialogPrimaryFieldRef = useRef<HTMLButtonElement | null>(
+    null,
+  );
   const accountTokenExpiryControlRef = useRef<HTMLDivElement | null>(null);
   const accountTokenCalendarControlRef = useRef<HTMLDivElement | null>(null);
 
@@ -577,7 +563,9 @@ export function AgentsContent({
       setIsAccountTokenCalendarOpen(false);
       setAccountTokenExpiryPreset("30");
       setAccountTokenCustomExpiry(toDateInputValue(addDays(new Date(), 30)));
-      setAccountTokenCalendarMonth(startOfCalendarMonth(addDays(new Date(), 30)));
+      setAccountTokenCalendarMonth(
+        startOfCalendarMonth(addDays(new Date(), 30)),
+      );
       setAccountTokenMaxUses("");
       return;
     }
@@ -597,7 +585,9 @@ export function AgentsContent({
         setSandboxUsageStatus(state.usageStatus);
         setCanManageSubscription(state.canManageSubscription);
         setIsSandboxBillingConfigured(state.billingConfigured);
-        setSandboxBillingConfigurationMessage(state.billingConfigurationMessage);
+        setSandboxBillingConfigurationMessage(
+          state.billingConfigurationMessage,
+        );
         setSandboxBudgetInput(
           formatSandboxBudgetInputValue(state.usageStatus?.budgetLimitCents),
         );
@@ -608,7 +598,11 @@ export function AgentsContent({
           return;
         }
 
-        setLoadError(error instanceof Error ? error.message : "Unable to load account state");
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load account state",
+        );
       })
       .finally(() => {
         if (!isActive) {
@@ -628,15 +622,20 @@ export function AgentsContent({
     accountTokenExpiryPreset === "custom"
       ? parseDateInputValue(accountTokenCustomExpiry)
       : addDays(new Date(), Number(accountTokenExpiryPreset));
-  const parsedAccountTokenMaxUses = parseAccountTokenMaxUses(accountTokenMaxUses);
-  const selectedAccountTokenCustomDate = parseDateInputValue(accountTokenCustomExpiry);
-  const accountTokenCalendarDays = getAccountTokenCalendarDays(accountTokenCalendarMonth);
+  const parsedAccountTokenMaxUses =
+    parseAccountTokenMaxUses(accountTokenMaxUses);
+  const selectedAccountTokenCustomDate = parseDateInputValue(
+    accountTokenCustomExpiry,
+  );
+  const accountTokenCalendarDays = getAccountTokenCalendarDays(
+    accountTokenCalendarMonth,
+  );
   const accountTokenCalendarToday = startOfCalendarDay(new Date());
   const hasValidCustomAccountTokenExpiry =
     accountTokenExpiryPreset !== "custom" ||
     Boolean(
       selectedAccountTokenExpiry &&
-        selectedAccountTokenExpiry.getTime() > Date.now(),
+      selectedAccountTokenExpiry.getTime() > Date.now(),
     );
   const hasValidAccountTokenMaxUses = parsedAccountTokenMaxUses !== null;
   const parsedSandboxBudgetInput = parseSandboxBudgetInput(sandboxBudgetInput);
@@ -712,7 +711,9 @@ export function AgentsContent({
     setIsAccountTokenExpiryMenuOpen(false);
     setIsAccountTokenCalendarOpen(false);
     setAccountTokenCalendarMonth(
-      startOfCalendarMonth(selectedAccountTokenCustomDate ?? addDays(new Date(), 30)),
+      startOfCalendarMonth(
+        selectedAccountTokenCustomDate ?? addDays(new Date(), 30),
+      ),
     );
     setIsAccountTokenDialogOpen(true);
   };
@@ -728,14 +729,18 @@ export function AgentsContent({
     setAccountTokenError(null);
   };
 
-  const handleSelectAccountTokenExpiryPreset = (value: AccountTokenExpiryPreset) => {
+  const handleSelectAccountTokenExpiryPreset = (
+    value: AccountTokenExpiryPreset,
+  ) => {
     setAccountTokenExpiryPreset(value);
     setAccountTokenError(null);
     setIsAccountTokenExpiryMenuOpen(false);
 
     if (value === "custom") {
       setAccountTokenCalendarMonth(
-        startOfCalendarMonth(selectedAccountTokenCustomDate ?? addDays(new Date(), 30)),
+        startOfCalendarMonth(
+          selectedAccountTokenCustomDate ?? addDays(new Date(), 30),
+        ),
       );
       setIsAccountTokenCalendarOpen(true);
       return;
@@ -745,7 +750,9 @@ export function AgentsContent({
   };
 
   const handleSelectAccountTokenCustomDate = (value: Date) => {
-    if (startOfCalendarDay(value).getTime() < accountTokenCalendarToday.getTime()) {
+    if (
+      startOfCalendarDay(value).getTime() < accountTokenCalendarToday.getTime()
+    ) {
       return;
     }
 
@@ -771,14 +778,20 @@ export function AgentsContent({
         setSandboxUsageStatus(state.usageStatus);
         setCanManageSubscription(state.canManageSubscription);
         setIsSandboxBillingConfigured(state.billingConfigured);
-        setSandboxBillingConfigurationMessage(state.billingConfigurationMessage);
+        setSandboxBillingConfigurationMessage(
+          state.billingConfigurationMessage,
+        );
         setSandboxBudgetInput(
           formatSandboxBudgetInputValue(state.usageStatus?.budgetLimitCents),
         );
         setSandboxBudgetError(null);
       })
       .catch((error) => {
-        setLoadError(error instanceof Error ? error.message : "Unable to load account state");
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load account state",
+        );
       })
       .finally(() => {
         setIsRefreshing(false);
@@ -818,7 +831,9 @@ export function AgentsContent({
             maxUses: parsedAccountTokenMaxUses,
           }),
         });
-        const result = (await response.json()) as AccountAccessToken | { error?: string };
+        const result = (await response.json()) as
+          | AccountAccessToken
+          | { error?: string };
 
         if (!response.ok) {
           throw new Error(
@@ -840,7 +855,9 @@ export function AgentsContent({
         setIsAccountTokenDialogOpen(false);
       } catch (error) {
         setAccountTokenError(
-          error instanceof Error ? error.message : "Unable to create account token",
+          error instanceof Error
+            ? error.message
+            : "Unable to create account token",
         );
       } finally {
         setIsCreatingAccountToken(false);
@@ -863,10 +880,15 @@ export function AgentsContent({
       const response = await fetch(path, {
         method: "POST",
       });
-      const result = (await response.json()) as { url?: string; error?: string };
+      const result = (await response.json()) as {
+        url?: string;
+        error?: string;
+      };
 
       if (!response.ok || !result.url) {
-        throw new Error(result.error || "Unable to open sandbox subscription flow");
+        throw new Error(
+          result.error || "Unable to open sandbox subscription flow",
+        );
       }
 
       window.location.assign(result.url);
@@ -881,11 +903,7 @@ export function AgentsContent({
   };
 
   const handleSaveSandboxBudget = async (mode: "save" | "clear") => {
-    if (
-      !isSignedIn ||
-      isSavingSandboxBudget ||
-      !isSandboxBillingConfigured
-    ) {
+    if (!isSignedIn || isSavingSandboxBudget || !isSandboxBillingConfigured) {
       return;
     }
 
@@ -896,7 +914,9 @@ export function AgentsContent({
     } else if (parsedSandboxBudgetInput.kind === "empty") {
       sandboxUsageBudgetCents = null;
     } else if (parsedSandboxBudgetInput.kind === "invalid") {
-      setSandboxBudgetError("Enter a positive dollar amount with up to two decimals.");
+      setSandboxBudgetError(
+        "Enter a positive dollar amount with up to two decimals.",
+      );
       return;
     } else {
       sandboxUsageBudgetCents = parsedSandboxBudgetInput.cents;
@@ -947,7 +967,9 @@ export function AgentsContent({
       );
     } catch (error) {
       setSandboxBudgetError(
-        error instanceof Error ? error.message : "Unable to update sandbox budget",
+        error instanceof Error
+          ? error.message
+          : "Unable to update sandbox budget",
       );
     } finally {
       setIsSavingSandboxBudget(false);
@@ -975,7 +997,10 @@ export function AgentsContent({
         <div className="explore-inner agents-inner">
           <article className="empty-state agents-empty-state">
             <h2>Loading account state.</h2>
-            <p>Checking the signed-in session before reading account-linked agents.</p>
+            <p>
+              Checking the signed-in session before reading account-linked
+              agents.
+            </p>
           </article>
         </div>
       </div>
@@ -988,7 +1013,10 @@ export function AgentsContent({
         <div className="explore-inner agents-inner">
           <article className="empty-state agents-empty-state">
             <h2>Sign in to view linked agents.</h2>
-            <p>Account-linked agent registrations are only available for the current signed-in user.</p>
+            <p>
+              Account-linked agent registrations are only available for the
+              current signed-in user.
+            </p>
             <Link className="agents-empty-link" href="/sign-in">
               Go to sign in
             </Link>
@@ -1000,8 +1028,8 @@ export function AgentsContent({
 
   const sandboxBillingActive = hasVerifiedSubscription(subscriptionStatus);
   const sandboxBillingUnavailableMessage = !isSandboxBillingConfigured
-    ? sandboxBillingConfigurationMessage ??
-      "Sandbox billing is not configured for this environment yet."
+    ? (sandboxBillingConfigurationMessage ??
+      "Sandbox billing is not configured for this environment yet.")
     : null;
   const sandboxReportedUsageLabel = formatUsdFromMicrocents(
     sandboxUsageStatus?.reportedUsageMicrocents ?? 0,
@@ -1025,19 +1053,22 @@ export function AgentsContent({
     : null;
   const sandboxUsageSummary = sandboxUsageStatus
     ? sandboxUsageStatus.reservedUsageMicrocents > 0
-      ? `Current cycle spend is ${sandboxReportedUsageLabel}, with ${sandboxReservedUsageLabel} still reserved while active sandboxes remain open. Charges settle through the saved card on the Verified subscription.`
-      : `Current cycle metered spend is ${sandboxReportedUsageLabel}. Charges settle through the saved card on the Verified subscription on top of the $10 monthly plan.`
-    : "Sandbox runtime is metered separately from the monthly Verified plan.";
+      ? `Spend is ${sandboxReportedUsageLabel}, with ${sandboxReservedUsageLabel} reserved for active sandboxes.`
+      : `Current cycle spend is ${sandboxReportedUsageLabel}.`
+    : "Billed separately to the saved card automatically.";
   const sandboxBudgetSummary = sandboxUsageStatus
     ? sandboxUsageStatus.budgetLimitCents !== undefined
-      ? `${sandboxBudgetRemainingLabel} remains before new sandbox runs are blocked.${sandboxUsageStatus.usingDefaultBudget ? " This account is currently using the deployment default limit." : ""}`
-      : "No budget cap is set yet. Add a profile-level limit to stop new runs before metered sandbox usage grows beyond your target spend."
-    : "Configure a budget cap after billing is enabled to limit metered sandbox usage.";
+      ? `${sandboxBudgetRemainingLabel ? `${sandboxBudgetRemainingLabel} left before runs stop.` : "Runs stop at this cap."}${sandboxUsageStatus.usingDefaultBudget ? " Using the default cap." : ""}`
+      : "No cap set yet. Add one to limit spend."
+    : "Add a cap after billing is enabled.";
   const headerKicker = header?.kicker ?? "Account agents";
   const headerTitle = header?.title ?? "Agents";
   const headerMeta = header?.meta;
-  const headerCopy = header?.copy ?? "Agents linked to your account through MCP appear here.";
-  const headerClassName = ["agents-header", headerUtility ? "has-utility" : ""].join(" ").trim();
+  const headerCopy =
+    header?.copy ?? "Agents linked to this account appear here.";
+  const headerClassName = ["agents-header", headerUtility ? "has-utility" : ""]
+    .join(" ")
+    .trim();
 
   return (
     <div className="explore-surface agents-surface">
@@ -1051,31 +1082,18 @@ export function AgentsContent({
           </div>
 
           <div className="agents-header-side">
-            {headerUtility ? <div className="agents-header-utility">{headerUtility}</div> : null}
+            {headerUtility ? (
+              <div className="agents-header-utility">{headerUtility}</div>
+            ) : null}
           </div>
         </header>
 
-        <section className="agents-panel agents-panel-showcase">
-          <div className="agents-section-heading">
-            <h2>Verified Access</h2>
-            <p>
-              Verified access lets your agents use sandbox environments to run code, test
-              benchmarks, and produce intermediate results for ongoing research. Sandbox
-              runtime is metered on top of the $10/month Verified subscription and charged
-              through the saved card on file.
-            </p>
-          </div>
-
+        <section className="agents-showcase-content">
           <div className="agents-billing-grid">
             <article className="agents-billing-card">
               <span className="agents-billing-label">Verification</span>
               <strong>{formatVerificationState(subscriptionStatus)}</strong>
               <p>{formatVerificationSummary(subscriptionStatus)}</p>
-            </article>
-            <article className="agents-billing-card">
-              <span className="agents-billing-label">Subscription</span>
-              <strong>{formatSubscriptionState(subscriptionStatus)}</strong>
-              <p>{formatSubscriptionSummary(subscriptionStatus)}</p>
             </article>
             <article className="agents-billing-card">
               <span className="agents-billing-label">Sandbox Usage</span>
@@ -1104,7 +1122,9 @@ export function AgentsContent({
                 !isSandboxBillingConfigured
               }
               onClick={() => {
-                void handleSandboxBillingRedirect("/api/account/sandbox/checkout");
+                void handleSandboxBillingRedirect(
+                  "/api/account/sandbox/checkout",
+                );
               }}
               type="button"
             >
@@ -1119,12 +1139,11 @@ export function AgentsContent({
             </button>
             <button
               className="agents-action"
-              disabled={
-                isManagingSandboxBilling ||
-                !canManageSubscription
-              }
+              disabled={isManagingSandboxBilling || !canManageSubscription}
               onClick={() => {
-                void handleSandboxBillingRedirect("/api/account/sandbox/portal");
+                void handleSandboxBillingRedirect(
+                  "/api/account/sandbox/portal",
+                );
               }}
               type="button"
             >
@@ -1133,28 +1152,31 @@ export function AgentsContent({
           </div>
 
           <div className="agents-sandbox-budget-shell">
-            <div className="agents-sandbox-budget-copy">
-              <span className="agents-billing-label">On-Demand Sandbox Billing</span>
-              <p>
-                Metered sandbox usage rolls into the same subscription-backed billing
-                relationship and charges the saved card on file. New sandbox runs are
-                blocked once the projected cycle spend would cross your profile limit.
-              </p>
+            <div className="agents-sandbox-budget-header">
+              <span className="agents-billing-label">
+                On-Demand Sandbox Billing
+              </span>
               {sandboxRateHourlyLabel ? (
-                <p>
-                  Current runtime rate: approximately <strong>{sandboxRateHourlyLabel}/hour</strong>.
+                <p className="agents-sandbox-budget-rate">
+                  Current rate: about{" "}
+                  <strong>{sandboxRateHourlyLabel}/hour</strong>.
                 </p>
               ) : null}
             </div>
 
             <div className="agents-sandbox-budget-form">
-              <label className="agents-token-label" htmlFor="sandbox-budget-limit-input">
+              <label
+                className="agents-token-label"
+                htmlFor="sandbox-budget-limit-input"
+              >
                 Budget limit (USD)
               </label>
               <div className="agents-sandbox-budget-controls">
                 <input
                   className="agents-token-input agents-sandbox-budget-input"
-                  disabled={!isSandboxBillingConfigured || isSavingSandboxBudget}
+                  disabled={
+                    !isSandboxBillingConfigured || isSavingSandboxBudget
+                  }
                   id="sandbox-budget-limit-input"
                   inputMode="decimal"
                   onChange={(event) => {
@@ -1196,9 +1218,9 @@ export function AgentsContent({
                 </button>
               </div>
               <p className="agents-sandbox-budget-note">
-                Leave the field blank to remove an account-specific cap.
+                Leave blank to remove the account cap.
                 {sandboxUsageStatus?.usingDefaultBudget
-                  ? " Clearing the override will fall back to the deployment default limit."
+                  ? " Clearing it falls back to the default cap."
                   : ""}
               </p>
               {sandboxBudgetError ? (
@@ -1214,7 +1236,7 @@ export function AgentsContent({
           ) : null}
         </section>
 
-        <section className="agents-panel agents-panel-showcase">
+        <section className="agents-panel agents-panel-showcase agents-lower-panel">
           <div className="agents-section-heading agents-section-heading-split">
             <div className="agents-section-heading-top">
               <h2>Bootstrap from the terminal</h2>
@@ -1233,16 +1255,17 @@ export function AgentsContent({
                   onClick={handleOpenAccountTokenDialog}
                   type="button"
                 >
-                  {isCreatingAccountToken ? "Generating..." : "Generate Account Token"}
+                  {isCreatingAccountToken
+                    ? "Generating..."
+                    : "Generate Account Token"}
                 </button>
               </div>
             </div>
             <p>
-              External agents should prefer <code>start_account_onboarding</code>: it creates a
-              Clerk approval link for a human, then mints a one-time account token the agent can
-              use as <code>Authorization: Bearer &lt;account_token&gt;</code> when opening the
-              first MCP session. The manual token below is still available when you need to
-              bootstrap directly from this signed-in account page.
+              Agents should begin with <code>start_account_onboarding</code>{" "}
+              from MCP. After human approval, the agent receives a one-time
+              account token for its first MCP session. Use the token below only
+              when an agent is bootstrapping directly from this page.
             </p>
           </div>
 
@@ -1250,7 +1273,11 @@ export function AgentsContent({
             <div className="agents-claim-block">
               <div className="agents-claim-row">
                 <code className="agents-claim-token">{accountToken.token}</code>
-                <button className="agents-action" onClick={handleCopyAccountToken} type="button">
+                <button
+                  className="agents-action"
+                  onClick={handleCopyAccountToken}
+                  type="button"
+                >
                   {hasCopiedAccountToken ? "Copied" : "Copy Token"}
                 </button>
               </div>
@@ -1260,8 +1287,7 @@ export function AgentsContent({
                 {accountToken.expiresAt
                   ? ` Expires ${formatDateTime(accountToken.expiresAt)}.`
                   : ""}
-                {` ${formatAccountTokenUsage(accountToken.maxUses)}`}{" "}
-                MCP endpoint:{" "}
+                {` ${formatAccountTokenUsage(accountToken.maxUses)}`} Endpoint:{" "}
                 <code>{accountToken.endpoint}</code>
               </p>
             </div>
@@ -1287,11 +1313,10 @@ export function AgentsContent({
                 role="dialog"
               >
                 <div className="agents-token-dialog-header">
-                  <h3 id="account-token-dialog-title">Generate account token</h3>
-                  <p>
-                    Choose how long the token should live and how many successful joins it should
-                    allow before it stops working.
-                  </p>
+                  <h3 id="account-token-dialog-title">
+                    Generate account token
+                  </h3>
+                  <p>Set an expiry and optional use limit.</p>
                 </div>
 
                 <div className="agents-token-dialog-body">
@@ -1307,7 +1332,9 @@ export function AgentsContent({
                           aria-haspopup="listbox"
                           className="agents-token-trigger"
                           onClick={() => {
-                            setIsAccountTokenExpiryMenuOpen((current) => !current);
+                            setIsAccountTokenExpiryMenuOpen(
+                              (current) => !current,
+                            );
                             setIsAccountTokenCalendarOpen(false);
                           }}
                           type="button"
@@ -1316,7 +1343,8 @@ export function AgentsContent({
                           <span className="agents-token-trigger-value">
                             {
                               ACCOUNT_TOKEN_EXPIRY_OPTIONS.find(
-                                (option) => option.value === accountTokenExpiryPreset,
+                                (option) =>
+                                  option.value === accountTokenExpiryPreset,
                               )?.label
                             }
                           </span>
@@ -1336,16 +1364,22 @@ export function AgentsContent({
                           <div className="agents-token-menu" role="listbox">
                             {ACCOUNT_TOKEN_EXPIRY_OPTIONS.map((option) => (
                               <button
-                                aria-selected={option.value === accountTokenExpiryPreset}
+                                aria-selected={
+                                  option.value === accountTokenExpiryPreset
+                                }
                                 className={[
                                   "agents-token-menu-option",
-                                  option.value === accountTokenExpiryPreset ? "is-selected" : "",
+                                  option.value === accountTokenExpiryPreset
+                                    ? "is-selected"
+                                    : "",
                                 ]
                                   .join(" ")
                                   .trim()}
                                 key={option.value}
                                 onClick={() => {
-                                  handleSelectAccountTokenExpiryPreset(option.value);
+                                  handleSelectAccountTokenExpiryPreset(
+                                    option.value,
+                                  );
                                 }}
                                 role="option"
                                 type="button"
@@ -1379,16 +1413,21 @@ export function AgentsContent({
                             onClick={() => {
                               setAccountTokenCalendarMonth(
                                 startOfCalendarMonth(
-                                  selectedAccountTokenCustomDate ?? addDays(new Date(), 30),
+                                  selectedAccountTokenCustomDate ??
+                                    addDays(new Date(), 30),
                                 ),
                               );
-                              setIsAccountTokenCalendarOpen((current) => !current);
+                              setIsAccountTokenCalendarOpen(
+                                (current) => !current,
+                              );
                               setIsAccountTokenExpiryMenuOpen(false);
                             }}
                             type="button"
                           >
                             <span className="agents-token-trigger-value">
-                              {formatCalendarDateValue(accountTokenCustomExpiry)}
+                              {formatCalendarDateValue(
+                                accountTokenCustomExpiry,
+                              )}
                             </span>
                             <CalendarDays
                               absoluteStrokeWidth
@@ -1398,9 +1437,16 @@ export function AgentsContent({
                           </button>
 
                           {isAccountTokenCalendarOpen ? (
-                            <div className="agents-token-calendar" role="dialog">
+                            <div
+                              className="agents-token-calendar"
+                              role="dialog"
+                            >
                               <div className="agents-token-calendar-header">
-                                <strong>{formatCalendarMonth(accountTokenCalendarMonth)}</strong>
+                                <strong>
+                                  {formatCalendarMonth(
+                                    accountTokenCalendarMonth,
+                                  )}
+                                </strong>
                                 <div className="agents-token-calendar-nav">
                                   <button
                                     className="agents-token-calendar-nav-button"
@@ -1411,7 +1457,10 @@ export function AgentsContent({
                                     }}
                                     type="button"
                                   >
-                                    <ChevronLeft absoluteStrokeWidth strokeWidth={2.2} />
+                                    <ChevronLeft
+                                      absoluteStrokeWidth
+                                      strokeWidth={2.2}
+                                    />
                                   </button>
                                   <button
                                     className="agents-token-calendar-nav-button"
@@ -1422,30 +1471,42 @@ export function AgentsContent({
                                     }}
                                     type="button"
                                   >
-                                    <ChevronRight absoluteStrokeWidth strokeWidth={2.2} />
+                                    <ChevronRight
+                                      absoluteStrokeWidth
+                                      strokeWidth={2.2}
+                                    />
                                   </button>
                                 </div>
                               </div>
 
                               <div className="agents-token-calendar-weekdays">
-                                {ACCOUNT_TOKEN_CALENDAR_WEEKDAYS.map((day, index) => (
-                                  <span
-                                    className="agents-token-calendar-weekday"
-                                    key={`${day}-${index}`}
-                                  >
-                                    {day}
-                                  </span>
-                                ))}
+                                {ACCOUNT_TOKEN_CALENDAR_WEEKDAYS.map(
+                                  (day, index) => (
+                                    <span
+                                      className="agents-token-calendar-weekday"
+                                      key={`${day}-${index}`}
+                                    >
+                                      {day}
+                                    </span>
+                                  ),
+                                )}
                               </div>
 
                               <div className="agents-token-calendar-grid">
                                 {accountTokenCalendarDays.map((day) => {
                                   const isCurrentMonth =
-                                    day.getMonth() === accountTokenCalendarMonth.getMonth();
+                                    day.getMonth() ===
+                                    accountTokenCalendarMonth.getMonth();
                                   const isSelected =
                                     selectedAccountTokenCustomDate !== null &&
-                                    isSameCalendarDay(day, selectedAccountTokenCustomDate);
-                                  const isToday = isSameCalendarDay(day, accountTokenCalendarToday);
+                                    isSameCalendarDay(
+                                      day,
+                                      selectedAccountTokenCustomDate,
+                                    );
+                                  const isToday = isSameCalendarDay(
+                                    day,
+                                    accountTokenCalendarToday,
+                                  );
                                   const isDisabled =
                                     startOfCalendarDay(day).getTime() <
                                     accountTokenCalendarToday.getTime();
@@ -1454,7 +1515,9 @@ export function AgentsContent({
                                     <button
                                       className={[
                                         "agents-token-calendar-day",
-                                        isCurrentMonth ? "" : "is-outside-month",
+                                        isCurrentMonth
+                                          ? ""
+                                          : "is-outside-month",
                                         isSelected ? "is-selected" : "",
                                         isToday ? "is-today" : "",
                                       ]
@@ -1478,10 +1541,14 @@ export function AgentsContent({
                       </div>
                     ) : (
                       <div className="agents-token-field">
-                        <span className="agents-token-label">Selected Expiry</span>
+                        <span className="agents-token-label">
+                          Selected Expiry
+                        </span>
                         <div className="agents-token-preview">
                           {selectedAccountTokenExpiry
-                            ? formatDateTime(selectedAccountTokenExpiry.toISOString())
+                            ? formatDateTime(
+                                selectedAccountTokenExpiry.toISOString(),
+                              )
                             : "Choose a future expiry"}
                         </div>
                       </div>
@@ -1517,7 +1584,9 @@ export function AgentsContent({
                           ? `Expires ${formatDateTime(selectedAccountTokenExpiry.toISOString())}`
                           : "Choose a future expiry"}
                         <br />
-                        {formatAccountTokenUsage(parsedAccountTokenMaxUses ?? undefined)}
+                        {formatAccountTokenUsage(
+                          parsedAccountTokenMaxUses ?? undefined,
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1535,7 +1604,9 @@ export function AgentsContent({
                     </p>
                   ) : null}
 
-                  {accountTokenError ? <SupportErrorMessage className="agents-error" /> : null}
+                  {accountTokenError ? (
+                    <SupportErrorMessage className="agents-error" />
+                  ) : null}
                 </div>
 
                 <div className="agents-token-dialog-footer">
@@ -1557,7 +1628,9 @@ export function AgentsContent({
                     onClick={handleCreateAccountToken}
                     type="button"
                   >
-                    {isCreatingAccountToken ? "Generating..." : "Generate Token"}
+                    {isCreatingAccountToken
+                      ? "Generating..."
+                      : "Generate Token"}
                   </button>
                 </div>
               </div>
@@ -1565,7 +1638,7 @@ export function AgentsContent({
           ) : null}
         </section>
 
-        <section className="agents-list-section">
+        <section className="agents-list-section agents-lower-list-section">
           <div className="agents-section-heading">
             <h2>Registered agents</h2>
             <p>
@@ -1592,9 +1665,10 @@ export function AgentsContent({
             <article className="empty-state agents-empty-state">
               <h2>No agents linked yet.</h2>
               <p>
-                Start with <code>start_account_onboarding</code> from MCP, or generate an account
-                token here and call <code>register_agent</code> from an account-authenticated MCP
-                session.
+                An agent should call <code>start_account_onboarding</code> from
+                MCP, wait for approval, then use the returned account token to
+                call <code>register_agent</code>. This page can mint that token
+                directly when the agent is bootstrapping here instead.
               </p>
             </article>
           ) : null}
@@ -1621,10 +1695,13 @@ export function AgentsContent({
                   <p className="agents-card-copy">{agent.headline}</p>
 
                   {agent.sandboxStatus.ineligibilityReason ? (
-                    <p className="agents-sandbox-copy">{agent.sandboxStatus.ineligibilityReason}</p>
+                    <p className="agents-sandbox-copy">
+                      {agent.sandboxStatus.ineligibilityReason}
+                    </p>
                   ) : (
                     <p className="agents-sandbox-copy">
-                      Verified profiles can start sandbox runs from workspace tabs and MCP tools.
+                      Verified profiles can start sandbox runs from workspace
+                      tabs and MCP tools.
                     </p>
                   )}
 
@@ -1632,7 +1709,9 @@ export function AgentsContent({
                     <span>Registered {formatDate(agent.createdAt)}</span>
                     <span>Updated {formatDate(agent.updatedAt)}</span>
                     {agent.sandboxStatus.billingStatus?.planName ? (
-                      <span>Plan {agent.sandboxStatus.billingStatus.planName}</span>
+                      <span>
+                        Plan {agent.sandboxStatus.billingStatus.planName}
+                      </span>
                     ) : null}
                   </div>
                 </article>
