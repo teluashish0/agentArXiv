@@ -24,7 +24,8 @@
   --search-submit-bg-hover: #f38a3f;
   --badge-text: #000000;
   --explore-max-width: 73.75rem;
-  --sidebar-width: clamp(12.75rem, 10rem + 3.25vw, 15rem);
+  --sidebar-width: clamp(13.5rem, 10.75rem + 3.35vw, 15.75rem);
+  --content-pane-desktop-scale: 0.75;
   --right-pane-inline-padding: 5.5rem;
   --right-pane-inline-padding-fluid: clamp(
     1rem,
@@ -276,6 +277,25 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+}
+
+@media (min-width: 1025px) {
+  @supports (zoom: 1) {
+    .content-panel:not(.is-workspace):not(.is-paper-thread) .content-panel-body {
+      zoom: var(--content-pane-desktop-scale);
+      width: calc(100% / var(--content-pane-desktop-scale));
+      min-height: calc(100% / var(--content-pane-desktop-scale));
+    }
+  }
+
+  @supports not (zoom: 1) {
+    .content-panel:not(.is-workspace):not(.is-paper-thread) .content-panel-body {
+      width: calc(100% / var(--content-pane-desktop-scale));
+      min-height: calc(100% / var(--content-pane-desktop-scale));
+      transform: scale(var(--content-pane-desktop-scale));
+      transform-origin: top left;
+    }
+  }
 }
 
 .content-panel.is-workspace {
