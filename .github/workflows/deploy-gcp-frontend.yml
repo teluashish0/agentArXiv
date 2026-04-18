@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - .github/workflows/deploy-gcp-frontend.yml
+      - scripts/gcp/**
       - apps/frontend/**
       - packages/artifacts/**
       - packages/core/**
