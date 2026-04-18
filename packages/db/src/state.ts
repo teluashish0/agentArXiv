@@ -32,6 +32,31 @@ function isMissingFindManyError(error: unknown) {
   return false;
 }
 
+function isMissingColumnError(
+  error: unknown,
+  modelName: string,
+  column: string,
+) {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("code" in error) ||
+    error.code !== "P2022" ||
+    !("meta" in error) ||
+    typeof error.meta !== "object" ||
+    error.meta === null
+  ) {
+    return false;
+  }
+
+  return (
+    "modelName" in error.meta &&
+    error.meta.modelName === modelName &&
+    "column" in error.meta &&
+    error.meta.column === column
+  );
+}
+
 async function findManyOrEmpty<T>(loader: () => Promise<T[]>) {
   try {
     return await loader();
@@ -41,6 +66,99 @@ async function findManyOrEmpty<T>(loader: () => Promise<T[]>) {
     }
 
     throw error;
+  }
+}
+
+async function loadAccountBillingStatuses(prisma: PrismaStateClient) {
+  try {
+    return await prisma.accountBillingStatus.findMany();
+  } catch (error) {
+    if (isMissingFindManyError(error)) {
+      return [];
+    }
+
+    if (
+      !isMissingColumnError(
+        error,
+        "AccountBillingStatus",
+        "AccountBillingStatus.currentPeriodStart",
+      )
+    ) {
+      throw error;
+    }
+
+    const legacyStatuses = await prisma.accountBillingStatus.findMany({
+      select: {
+        id: true,
+        ownerClerkUserId: true,
+        stripeCustomerId: true,
+        stripeSubscriptionId: true,
+        stripePriceId: true,
+        stripeProductId: true,
+        billingState: true,
+        sandboxEligibility: true,
+        planName: true,
+        planLookupKey: true,
+        planMetadata: true,
+        currentPeriodEnd: true,
+        sandboxUsageBudgetCents: true,
+        cancelAt: true,
+        cancelAtPeriodEnd: true,
+        canceledAt: true,
+        delinquentAt: true,
+        lastWebhookAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return legacyStatuses.map((status) => ({
+      ...status,
+      currentPeriodStart: null,
+    }));
+  }
+}
+
+async function loadSandboxUsageLedger(prisma: PrismaStateClient) {
+  try {
+    return await prisma.sandboxUsageLedger.findMany();
+  } catch (error) {
+    if (isMissingFindManyError(error)) {
+      return [];
+    }
+
+    if (
+      !isMissingColumnError(
+        error,
+        "SandboxUsageLedger",
+        "SandboxUsageLedger.estimatedCostMicrocents",
+      )
+    ) {
+      throw error;
+    }
+
+    const legacyEntries = await prisma.sandboxUsageLedger.findMany({
+      select: {
+        id: true,
+        executionId: true,
+        ownerClerkUserId: true,
+        stripeCustomerId: true,
+        stripeMeterEventName: true,
+        stripeMeterEventIdentifier: true,
+        meterValue: true,
+        runtimeSeconds: true,
+        sandboxCpuCount: true,
+        sandboxMemoryMb: true,
+        status: true,
+        createdAt: true,
+        reportedAt: true,
+      },
+    });
+
+    return legacyEntries.map((entry) => ({
+      ...entry,
+      estimatedCostMicrocents: null,
+    }));
   }
 }
 
@@ -82,7 +200,7 @@ export async function loadStateFromPrisma(
   ] = await Promise.all([
     findManyOrEmpty(() => prisma.agentProfile.findMany()),
     findManyOrEmpty(() => prisma.accountAccessToken.findMany()),
-    findManyOrEmpty(() => prisma.accountBillingStatus.findMany()),
+    loadAccountBillingStatuses(prisma),
     findManyOrEmpty(() => prisma.agentPaper.findMany()),
     findManyOrEmpty(() => prisma.paperDiscussionThread.findMany()),
     findManyOrEmpty(() => prisma.paperVote.findMany()),
@@ -106,7 +224,7 @@ export async function loadStateFromPrisma(
     findManyOrEmpty(() => prisma.delegatedTask.findMany()),
     findManyOrEmpty(() => prisma.sandboxSession.findMany()),
     findManyOrEmpty(() => prisma.sandboxExecution.findMany()),
-    findManyOrEmpty(() => prisma.sandboxUsageLedger.findMany()),
+    loadSandboxUsageLedger(prisma),
     findManyOrEmpty(() => prisma.workspaceNotebook.findMany()),
     findManyOrEmpty(() => prisma.workspaceNotebookRevision.findMany()),
     findManyOrEmpty(() => prisma.workspaceNotebookLease.findMany()),

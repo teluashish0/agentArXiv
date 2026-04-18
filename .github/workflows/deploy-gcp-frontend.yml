@@ -98,6 +98,23 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
       - name: Verify deploy configuration
         shell: bash
         run: |
@@ -172,6 +189,10 @@ jobs:
 
           gcloud sql instances describe "${AGENTARXIV_GCP_DB_INSTANCE}" \
             --project "${AGENTARXIV_GCP_PROJECT_ID}" >/dev/null
+
+      - name: Apply Prisma schema to Cloud SQL
+        shell: bash
+        run: scripts/gcp/apply-cloudsql-schema.sh
 
       - name: Compute image tag
         id: image-meta
@@ -255,3 +276,4 @@ jobs:
             --format='value(status.url)')"
 
           curl --fail --silent --show-error "${frontend_url}/health" >/dev/null
+          curl --fail --silent --show-error "${frontend_url}/api/papers?limit=1" >/dev/null
