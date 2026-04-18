@@ -23,17 +23,16 @@
   --search-submit-bg: #fa7315;
   --search-submit-bg-hover: #f38a3f;
   --badge-text: #000000;
-  --explore-max-width: 73.75rem;
+  --explore-max-width: clamp(56rem, 49rem + 14vw, 67rem);
   --sidebar-width: clamp(13.5rem, 10.75rem + 3.35vw, 15.75rem);
-  --content-pane-desktop-scale: 0.75;
-  --right-pane-inline-padding: 5.5rem;
+  --right-pane-inline-padding: 4.25rem;
   --right-pane-inline-padding-fluid: clamp(
-    1rem,
-    0.15rem + 3.25vw,
+    0.875rem,
+    0.35rem + 2.15vw,
     var(--right-pane-inline-padding)
   );
-  --right-pane-top-padding: clamp(2.75rem, 1.85rem + 1.4vw, 3.75rem);
-  --right-pane-card-gap: clamp(1.25rem, 0.7rem + 1vw, 1.75rem);
+  --right-pane-top-padding: clamp(2rem, 1.4rem + 1vw, 3rem);
+  --right-pane-card-gap: clamp(1rem, 0.65rem + 0.7vw, 1.35rem);
   --workspace-side-pane-top-offset: 4.75rem;
   --surface-radius-xl: clamp(1.5rem, 1.1rem + 0.7vw, 2rem);
   --surface-radius-lg: clamp(1rem, 0.72rem + 0.4vw, 1.5rem);
@@ -267,6 +266,7 @@ body {
   flex-direction: column;
   flex: 1;
   height: 100vh;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: var(--right-pane-top-padding) var(--right-pane-inline-padding-fluid)
     24px;
@@ -277,25 +277,6 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-}
-
-@media (min-width: 1025px) {
-  @supports (zoom: 1) {
-    .content-panel:not(.is-workspace):not(.is-paper-thread) .content-panel-body {
-      zoom: var(--content-pane-desktop-scale);
-      width: calc(100% / var(--content-pane-desktop-scale));
-      min-height: calc(100% / var(--content-pane-desktop-scale));
-    }
-  }
-
-  @supports not (zoom: 1) {
-    .content-panel:not(.is-workspace):not(.is-paper-thread) .content-panel-body {
-      width: calc(100% / var(--content-pane-desktop-scale));
-      min-height: calc(100% / var(--content-pane-desktop-scale));
-      transform: scale(var(--content-pane-desktop-scale));
-      transform-origin: top left;
-    }
-  }
 }
 
 .content-panel.is-workspace {
@@ -400,15 +381,18 @@ button {
 }
 
 .hero-banner {
-  --hero-inline-padding: clamp(1.25rem, 0.35rem + 1.6vw, 2.5rem);
-  --hero-top-padding: clamp(2rem, 1.05rem + 1.8vw, 3.5rem);
+  --hero-inline-padding: clamp(1rem, 0.55rem + 1vw, 1.75rem);
+  --hero-top-padding: clamp(1.5rem, 0.8rem + 1.25vw, 2.5rem);
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   width: 100%;
-  padding: var(--hero-top-padding) var(--hero-inline-padding) clamp(24px, 2.8vw, 40px);
+  padding:
+    var(--hero-top-padding)
+    var(--hero-inline-padding)
+    clamp(1.25rem, 0.8rem + 1vw, 2rem);
 }
 
 .hero-note {
@@ -468,20 +452,20 @@ button {
 
 .hero-stat-tooltip {
   position: absolute;
-  top: calc(100% + clamp(0.75rem, 0.4rem + 0.55vw, 1.125rem));
-  right: calc(100% - clamp(0.75rem, 0.4rem + 0.55vw, 1.125rem));
+  top: calc(100% + clamp(0.45rem, 0.25rem + 0.3vw, 0.7rem));
+  right: calc(100% - clamp(0.35rem, 0.15rem + 0.2vw, 0.55rem));
   display: grid;
-  gap: clamp(0.75rem, 0.45rem + 0.45vw, 0.875rem);
-  width: min(28rem, calc(100vw - 2rem));
-  padding: clamp(1rem, 0.55rem + 0.8vw, 1.5rem);
+  gap: clamp(0.5rem, 0.35rem + 0.2vw, 0.7rem);
+  width: min(21rem, calc(100vw - 1.5rem));
+  padding: clamp(0.8rem, 0.55rem + 0.35vw, 1rem);
   box-sizing: border-box;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--surface-radius-lg);
   background: rgba(14, 14, 16, 0.98);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.32);
   color: #ebe7e7;
-  font-size: clamp(1rem, 0.92rem + 0.28vw, 1.18rem);
-  line-height: 1.6;
+  font-size: clamp(0.88rem, 0.84rem + 0.14vw, 0.98rem);
+  line-height: 1.48;
   text-align: left;
   opacity: 0;
   pointer-events: none;
@@ -530,7 +514,7 @@ button {
 .hero-stat {
   margin-top: clamp(0.35rem, 0.15rem + 0.35vw, 0.625rem);
   color: #fa7315;
-  font-size: clamp(3.75rem, 2.6rem + 2.8vw, 6.25rem);
+  font-size: clamp(3rem, 2.15rem + 2vw, 4.75rem);
   line-height: 0.91;
   font-weight: 800;
   letter-spacing: -0.07em;
@@ -540,11 +524,11 @@ button {
 
 .hero-headline {
   width: 100%;
-  max-width: 56rem;
+  max-width: 48rem;
   align-self: stretch;
-  margin: clamp(1.5rem, 0.8rem + 1.4vw, 2.25rem) auto 0;
+  margin: clamp(1rem, 0.55rem + 0.8vw, 1.5rem) auto 0;
   color: #f3f0f1;
-  font-size: clamp(3rem, 1.95rem + 3vw, 5.1rem);
+  font-size: clamp(2.3rem, 1.45rem + 2.25vw, 4rem);
   line-height: 0.98;
   font-weight: 700;
   letter-spacing: -0.06em;
@@ -556,12 +540,12 @@ button {
 
 .hero-copy {
   width: 100%;
-  max-width: 47.5rem;
+  max-width: 41rem;
   align-self: stretch;
-  margin: clamp(0.875rem, 0.45rem + 0.8vw, 1.375rem) auto 0;
+  margin: clamp(0.7rem, 0.4rem + 0.45vw, 1rem) auto 0;
   color: #a7a2aa;
-  font-size: clamp(1.05rem, 0.9rem + 0.55vw, 1.45rem);
-  line-height: 1.72;
+  font-size: clamp(0.98rem, 0.9rem + 0.24vw, 1.14rem);
+  line-height: 1.66;
 }
 
 .hero-note {
@@ -572,11 +556,12 @@ button {
 }
 
 .hero-onboarding {
-  width: min(100%, 51.25rem);
-  margin-top: clamp(1.5rem, 0.8rem + 1.4vw, 2.25rem);
-  padding: clamp(1.25rem, 0.85rem + 1vw, 1.875rem)
-    clamp(1rem, 0.55rem + 0.9vw, 1.5rem)
-    clamp(1.125rem, 0.7rem + 0.85vw, 1.75rem);
+  width: min(100%, 44rem);
+  margin-top: clamp(1.15rem, 0.7rem + 0.8vw, 1.7rem);
+  padding:
+    clamp(1rem, 0.7rem + 0.55vw, 1.35rem)
+    clamp(0.95rem, 0.65rem + 0.45vw, 1.2rem)
+    clamp(0.95rem, 0.65rem + 0.45vw, 1.25rem);
   border: 1px solid var(--surface-border);
   border-radius: var(--surface-radius-xl);
   background: var(--surface-control);
@@ -587,7 +572,7 @@ button {
 .hero-onboarding-title {
   margin: 0;
   color: var(--surface-text);
-  font-size: clamp(1.9rem, 1.45rem + 1vw, 2.4rem);
+  font-size: clamp(1.45rem, 1.1rem + 0.7vw, 1.9rem);
   line-height: 1.02;
   letter-spacing: -0.05em;
 }
@@ -1004,13 +989,9 @@ button {
 }
 
 @media (max-width: 1700px) {
-  .explore-inner {
-    max-width: 1120px;
-  }
-
   .content-panel {
-    padding-right: clamp(20px, 3.2vw, 72px);
-    padding-left: clamp(20px, 3.2vw, 72px);
+    padding-right: clamp(1rem, 2.4vw, 3rem);
+    padding-left: clamp(1rem, 2.4vw, 3rem);
   }
 }
 
@@ -1652,7 +1633,7 @@ button {
 }
 
 .leaderboard-heading-block {
-  max-width: 42.5rem;
+  max-width: 35rem;
 }
 
 .leaderboard-kicker {
@@ -1667,7 +1648,7 @@ button {
 .leaderboard-title {
   margin: 12px 0 0;
   color: var(--surface-text);
-  font-size: clamp(2rem, 2.4vw, 3.1rem);
+  font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.5rem);
   line-height: 1;
   font-weight: 700;
   letter-spacing: -0.05em;
@@ -1676,19 +1657,20 @@ button {
 .leaderboard-copy {
   margin: 14px 0 0;
   color: var(--surface-text-muted);
-  font-size: clamp(0.98rem, 0.92rem + 0.14vw, 1.05rem);
-  line-height: 1.65;
+  font-size: clamp(0.92rem, 0.88rem + 0.1vw, 0.98rem);
+  line-height: 1.55;
 }
 
 .leaderboard-header-note {
   margin: 0;
-  padding: clamp(0.55rem, 0.4rem + 0.18vw, 0.625rem)
-    clamp(0.75rem, 0.55rem + 0.3vw, 0.875rem);
+  padding:
+    clamp(0.45rem, 0.35rem + 0.12vw, 0.55rem)
+    clamp(0.65rem, 0.52rem + 0.18vw, 0.75rem);
   border: 1px solid var(--surface-border);
   border-radius: 999px;
   background: rgba(15, 15, 18, 0.92);
   color: var(--surface-text-soft);
-  font-size: clamp(0.82rem, 0.76rem + 0.12vw, 0.88rem);
+  font-size: clamp(0.74rem, 0.7rem + 0.08vw, 0.8rem);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1745,7 +1727,7 @@ button {
 .leaderboard-feedback {
   margin-top: clamp(1.5rem, 0.85rem + 1vw, 2.125rem);
   margin-left: 0;
-  width: 100%;
+  width: min(100%, 56rem);
 }
 
 .leaderboard-detail-feedback {
@@ -2031,7 +2013,7 @@ button {
 .leaderboard-papers-empty-state {
   margin-top: clamp(0.75rem, 0.45rem + 0.35vw, 1rem);
   margin-left: 0;
-  width: 100%;
+  width: min(100%, 56rem);
 }
 
 .paper-card,
@@ -3415,24 +3397,29 @@ button {
 }
 
 .empty-state {
-  padding: 42px 40px;
+  padding: clamp(1.4rem, 0.95rem + 0.8vw, 2rem)
+    clamp(1.2rem, 0.8rem + 0.7vw, 1.7rem);
 }
 
 .empty-state h2 {
   margin: 0;
   color: var(--surface-text);
-  font-size: clamp(2.2rem, 2.4vw, 2.8rem);
-  line-height: 1.08;
+  font-size: clamp(1.65rem, 1.2rem + 1.1vw, 2.15rem);
+  line-height: 1.05;
   font-weight: 700;
   letter-spacing: -0.04em;
 }
 
 .empty-state p {
-  max-width: 58ch;
-  margin: 16px 0 0;
+  max-width: 52ch;
+  margin: clamp(0.75rem, 0.55rem + 0.25vw, 0.95rem) 0 0;
   color: var(--surface-text-muted);
-  font-size: 1.56rem;
-  line-height: 1.64;
+  font-size: clamp(1rem, 0.92rem + 0.18vw, 1.12rem);
+  line-height: 1.55;
+}
+
+.paper-feed > .empty-state {
+  width: min(100%, 56rem);
 }
 
 .invites-surface {
