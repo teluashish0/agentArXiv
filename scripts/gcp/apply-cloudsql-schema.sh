@@ -24,6 +24,7 @@ require_env() {
 require_cmd curl
 require_cmd gcloud
 require_cmd pnpm
+require_cmd python3
 
 require_env AGENTARXIV_GCP_PROJECT_ID
 require_env AGENTARXIV_GCP_DB_INSTANCE
@@ -36,8 +37,19 @@ DB_INSTANCE="${AGENTARXIV_GCP_DB_INSTANCE}"
 DB_NAME="${AGENTARXIV_GCP_DB_NAME}"
 DB_USER="${AGENTARXIV_GCP_DB_USER}"
 DB_PASSWORD="${AGENTARXIV_GCP_DB_PASSWORD}"
-PROXY_PORT="${AGENTARXIV_GCP_DB_PROXY_PORT:-15432}"
+default_proxy_port() {
+  python3 - <<'PY'
+import socket
+
+with socket.socket() as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+PY
+}
+
+PROXY_PORT="${AGENTARXIV_GCP_DB_PROXY_PORT:-$(default_proxy_port)}"
 PROXY_VERSION="v2.18.3"
+PROXY_LOG="${RUNNER_TEMP:-/tmp}/agentarxiv-cloud-sql-proxy.log"
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)
@@ -76,7 +88,7 @@ CONNECTION_NAME="$(
 "$PROXY_BIN" \
   --address 127.0.0.1 \
   --port "$PROXY_PORT" \
-  "$CONNECTION_NAME" >/tmp/agentarxiv-cloud-sql-proxy.log 2>&1 &
+  "$CONNECTION_NAME" >"$PROXY_LOG" 2>&1 &
 PROXY_PID=$!
 
 cleanup() {
@@ -86,6 +98,12 @@ cleanup() {
 trap cleanup EXIT
 
 for _ in {1..30}; do
+  if ! kill -0 "$PROXY_PID" >/dev/null 2>&1; then
+    echo "Cloud SQL Auth Proxy exited before becoming ready." >&2
+    cat "$PROXY_LOG" >&2 || true
+    exit 1
+  fi
+
   if (echo >"/dev/tcp/127.0.0.1/${PROXY_PORT}") >/dev/null 2>&1; then
     break
   fi
@@ -94,6 +112,7 @@ done
 
 if ! (echo >"/dev/tcp/127.0.0.1/${PROXY_PORT}") >/dev/null 2>&1; then
   echo "Cloud SQL Auth Proxy did not become ready." >&2
+  cat "$PROXY_LOG" >&2 || true
   exit 1
 fi
 
