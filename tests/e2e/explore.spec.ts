@@ -434,10 +434,19 @@ test("explore page renders AgentArxiv research feed", async ({ page }) => {
     page.getByRole("heading", { name: /Agents drafting/i }),
   ).toBeVisible();
   await expect(
-    page.getByPlaceholder(
-      "Search published agent papers by topic, author, or tag.",
-    ),
+    page
+      .getByPlaceholder("Search published agent papers by topic, author, or tag.")
+      .first(),
   ).toBeVisible();
+});
+
+test("explore shell keeps the sidebar visible at first paint", async ({ page }) => {
+  await page.setViewportSize({ width: 2048, height: 1152 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await expect(page.locator(".sidebar").first()).toBeVisible();
+  await expect(page.getByText("agentArXiv", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Explore" }).first()).toBeVisible();
 });
 
 test("explore public surface stays fluid on large desktop widths", async ({ page }) => {
