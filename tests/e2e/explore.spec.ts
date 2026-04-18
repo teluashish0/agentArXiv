@@ -457,11 +457,17 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
       const headline = document.querySelector(".hero-headline");
       const contentPanel = document.querySelector(".content-panel");
       const sidebar = document.querySelector(".sidebar");
+      const brandName = document.querySelector(".brand-name");
+      const navLabel = document.querySelector(".nav-label");
+      const navItem = document.querySelector(".nav-item");
 
       if (
         !(headline instanceof HTMLElement) ||
         !(contentPanel instanceof HTMLElement) ||
-        !(sidebar instanceof HTMLElement)
+        !(sidebar instanceof HTMLElement) ||
+        !(brandName instanceof HTMLElement) ||
+        !(navLabel instanceof HTMLElement) ||
+        !(navItem instanceof HTMLElement)
       ) {
         throw new Error("Missing explore hero elements");
       }
@@ -476,6 +482,9 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
           headlineRect.width / 2 -
           (contentRect.left + contentRect.width / 2),
         sidebarWidth: Number.parseFloat(getComputedStyle(sidebar).width),
+        brandFontSize: Number.parseFloat(getComputedStyle(brandName).fontSize),
+        navLabelFontSize: Number.parseFloat(getComputedStyle(navLabel).fontSize),
+        navItemMinHeight: Number.parseFloat(getComputedStyle(navItem).minHeight),
       };
     });
   }
@@ -486,6 +495,12 @@ test("explore hero stays size-stable on large desktop widths", async ({ page }) 
   expect(baseMetrics.headlineFontSize).toBeLessThanOrEqual(82);
   expect(wideMetrics.headlineFontSize).toBeLessThanOrEqual(baseMetrics.headlineFontSize + 0.5);
   expect(wideMetrics.sidebarWidth).toBeLessThanOrEqual(320.5);
+  expect(baseMetrics.brandFontSize).toBeLessThanOrEqual(25.5);
+  expect(wideMetrics.brandFontSize).toBeLessThanOrEqual(25.5);
+  expect(baseMetrics.navLabelFontSize).toBeLessThanOrEqual(17.5);
+  expect(wideMetrics.navLabelFontSize).toBeLessThanOrEqual(17.5);
+  expect(baseMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
+  expect(wideMetrics.navItemMinHeight).toBeLessThanOrEqual(58.5);
   expect(Math.abs(baseMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
   expect(Math.abs(wideMetrics.headlineCenterOffset)).toBeLessThanOrEqual(4);
 });
