@@ -323,6 +323,10 @@ body {
   padding: 0;
 }
 
+.content-panel.is-workspace.is-workspace-detail {
+  --content-pane-scale: 1;
+}
+
 .content-panel.is-workspace:has(.workspace-paper-layout) {
   padding: 0;
 }
@@ -365,6 +369,13 @@ body {
 .content-panel.is-workspace .workspace-layout {
   height: 100%;
   min-height: 0;
+}
+
+.content-panel.is-workspace.is-workspace-detail .workspace-page,
+.content-panel.is-workspace.is-workspace-detail .workspace-layout,
+.content-panel.is-workspace.is-workspace-detail .workspace-loading-page {
+  height: 100%;
+  min-height: 100%;
 }
 
 .content-panel.is-paper-thread {
@@ -2916,14 +2927,16 @@ button {
   height: calc(1.12rem * var(--paper-thread-content-scale));
 }
 
+.leaderboard-agent-detail-inner {
+  padding-top: var(--content-view-top-padding);
+}
+
 .leaderboard-agent-detail-inner .paper-thread-topbar {
   margin-bottom: clamp(0.625rem, 0.45rem + 0.22vw, 0.78rem);
 }
 
 .leaderboard-agent-detail-stack {
-  --leaderboard-agent-detail-left-nudge: clamp(0.35rem, 0.22rem + 0.24vw, 0.55rem);
-  width: calc(100% + var(--leaderboard-agent-detail-left-nudge));
-  margin-left: calc(var(--leaderboard-agent-detail-left-nudge) * -1);
+  width: 100%;
 }
 
 .leaderboard-agent-detail-stack .leaderboard-papers-header {
@@ -3826,14 +3839,25 @@ button {
 
 .workspace-paper-embed-preview .workspace-paper-page-shell {
   margin: 0 auto;
+  width: calc(
+    var(--workspace-paper-page-width) * var(--workspace-paper-scale, 1)
+  );
+  min-width: 0;
+  height: calc(11in * var(--workspace-paper-scale, 1));
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
 }
 
 .workspace-paper-embed-preview .workspace-paper-page {
-  border-color: #d9d4ca;
+  border: 1px solid #d9d4ca;
   background: #ffffff;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.92),
     0 24px 48px rgba(0, 0, 0, 0.18);
+  transform: scale(var(--workspace-paper-scale, 1));
+  transform-origin: top left;
 }
 
 .workspace-paper-embed-preview .workspace-paper-title,
@@ -5835,6 +5859,7 @@ button {
   height: calc(100vh - var(--right-pane-top-padding) - 18px);
   min-height: calc(100vh - var(--right-pane-top-padding) - 18px);
   min-width: 0;
+  width: 100%;
 }
 
 .workspace-layout {
@@ -5844,6 +5869,7 @@ button {
   height: calc(100vh - var(--right-pane-top-padding) - 18px);
   min-height: 0;
   min-width: 0;
+  width: 100%;
 }
 
 .workspace-layout.is-resizing {
@@ -5860,8 +5886,13 @@ button {
   align-items: stretch;
   flex: 1;
   min-height: 0;
+  width: 100%;
   gap: 0;
   overflow: hidden;
+}
+
+.workspace-layout-body.is-pending-paper-layout {
+  visibility: hidden;
 }
 
 .workspace-document-column,
@@ -5984,6 +6015,25 @@ button {
 }
 
 .paper-reader-layout .workspace-back-link-icon {
+  width: 0.84rem;
+  height: 0.84rem;
+}
+
+.workspace-compact-layout .workspace-surface-bar {
+  gap: 10px;
+  min-height: 50px;
+  padding: 0 14px;
+}
+
+.workspace-compact-layout .workspace-back-link {
+  left: 14px;
+  gap: 5px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.workspace-compact-layout .workspace-back-link-icon {
   width: 0.84rem;
   height: 0.84rem;
 }
@@ -6610,6 +6660,9 @@ button {
 
 .workspace-editor-surface {
   --workspace-paper-page-width: 8.5in;
+  --workspace-paper-fit-scale: 1;
+  --workspace-paper-zoom-factor: 1;
+  --workspace-paper-total-scale: 1;
   --workspace-paper-header-padding: 0.72in 0.78in 0.18in;
   --workspace-paper-header-gap: 0.14in;
   --workspace-paper-title-size: 24pt;
@@ -6654,6 +6707,14 @@ button {
   display: none !important;
 }
 
+.workspace-paper-surface-host {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+}
+
 .workspace-paper-preview-scroll {
   flex: 1;
   height: 0;
@@ -6681,7 +6742,7 @@ button {
   display: flex;
   min-height: 100%;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-start;
   gap: 28px;
   padding: 28px 24px 56px;
@@ -6727,12 +6788,38 @@ button {
 
 .workspace-paper-page-shell {
   position: relative;
-  width: calc(
-    var(--workspace-paper-page-width) * var(--workspace-paper-scale, 1)
-  );
-  height: calc(11in * var(--workspace-paper-scale, 1));
+  width: 100%;
+  min-width: 0;
+  height: calc(11in * var(--workspace-paper-total-scale, 1));
   flex: none;
-  overflow: hidden;
+  border: 1px solid #2a2f37;
+  background: #181818;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 24px 56px rgba(0, 0, 0, 0.42);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.workspace-paper-page-viewport {
+  display: flex;
+  width: max(
+    100%,
+    calc(
+      var(--workspace-paper-page-width) * var(--workspace-paper-total-scale, 1)
+    )
+  );
+  height: 100%;
+  justify-content: center;
+}
+
+.workspace-paper-page-sizer {
+  position: relative;
+  width: calc(
+    var(--workspace-paper-page-width) * var(--workspace-paper-fit-scale, 1)
+  );
+  height: 100%;
+  flex: none;
 }
 
 .workspace-paper-page {
@@ -6741,12 +6828,10 @@ button {
   left: 0;
   width: var(--workspace-paper-page-width);
   height: 11in;
-  border: 1px solid #2a2f37;
-  background: #181818;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    0 24px 56px rgba(0, 0, 0, 0.42);
-  transform: scale(var(--workspace-paper-scale, 1));
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: scale(var(--workspace-paper-total-scale, 1));
   transform-origin: top left;
   overflow: hidden;
 }
@@ -12343,10 +12428,6 @@ a {
     font-size: 0.94rem;
   }
 
-  .leaderboard-agent-detail-stack {
-    --leaderboard-agent-detail-left-nudge: 0.25rem;
-  }
-
   .paper-thread-post,
   .paper-thread-sidebar-card {
     border-radius: 8px;
@@ -12590,4 +12671,65 @@ a {
   .paper-thread-shell-comments .paper-thread-sidebar-meta-row dd {
     font-size: calc(0.9rem * var(--paper-thread-sidebar-scale));
   }
+}
+
+/* Workspace ticket detail views should render the right pane flush to the pane edges. */
+.workspace-compact-layout .workspace-chat-shell.is-empty,
+.workspace-compact-layout .workspace-chat-log,
+.workspace-compact-layout .workspace-chat-composer,
+.workspace-compact-layout .workspace-chat-decision-panel {
+  padding: 0 !important;
+}
+
+.workspace-compact-layout .workspace-chat-shell.is-empty {
+  display: block;
+}
+
+.workspace-compact-layout .workspace-chat-shell-nav {
+  padding: 0;
+}
+
+.workspace-compact-layout .workspace-chat-empty-state {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  box-sizing: border-box;
+  align-content: start;
+  justify-content: stretch;
+}
+
+.workspace-compact-layout .workspace-chat-empty-mark {
+  display: none;
+}
+
+.workspace-compact-layout .workspace-tool-card {
+  min-height: 0;
+  margin: 0;
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.workspace-compact-layout .workspace-tool-card-wide {
+  grid-column: auto;
+}
+
+.workspace-compact-layout .workspace-chat-message,
+.workspace-compact-layout .workspace-chat-selection-preview,
+.workspace-compact-layout .workspace-chat-message-reference-preview,
+.workspace-compact-layout .workspace-chat-reference-preview,
+.workspace-compact-layout .workspace-chat-message-selection,
+.workspace-compact-layout .workspace-chat-message-reference,
+.workspace-compact-layout .workspace-chat-reference-card,
+.workspace-compact-layout .workspace-chat-attachment-card {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.workspace-compact-layout .workspace-chat-system-event-row {
+  padding: 0;
 }

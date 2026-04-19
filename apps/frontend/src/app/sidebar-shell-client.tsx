@@ -151,6 +151,7 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
           "content-panel",
           isWorkspace || isPaperDocumentView ? "is-workspace" : "",
           isWorkspaceOverview ? "is-workspace-overview" : "",
+          isWorkspaceDetail ? "is-workspace-detail" : "",
           isPaperDocumentView ? "is-paper-document-view" : "",
           isPaperCommentsView ? "is-paper-thread" : "",
           shouldReduceRightPaneContent ? "is-content-pane-reduced" : "",

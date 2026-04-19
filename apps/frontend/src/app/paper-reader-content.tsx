@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, FileText } from "lucide-react";
 import type { PaperReaderResponse } from "./paper-reader-model";
 import { WorkspaceChatKitPane } from "./workspace-chatkit-pane";
 import {
   buildRenderedLatexDocument,
+  MAX_WORKSPACE_PAPER_FIT_SCALE,
+  MIN_WORKSPACE_PAPER_FIT_SCALE,
+  WORKSPACE_PAPER_PAGE_WIDTH_PX,
   type WorkspaceCapturedSelection,
   WorkspaceLatexSurface,
 } from "./workspace-latex-surface";
@@ -59,19 +62,138 @@ export function PaperReaderContent({
   reader: PaperReaderResponse;
 }) {
   const renderedDocument = buildRenderedLatexDocument(reader.document, [], "paper", 0);
-  const [chatPaneWidth, setChatPaneWidth] = useState(() => readStoredChatPaneWidth(reader.paper.id));
+  const [chatPaneWidth, setChatPaneWidth] = useState(DEFAULT_CHAT_PANE_WIDTH);
+  const [restoredChatPaneWidthPaperId, setRestoredChatPaneWidthPaperId] = useState<
+    string | null
+  >(null);
+  const [paperFitScaleState, setPaperFitScaleState] = useState<{
+    paperId: string;
+    scale: number | null;
+  }>({
+    paperId: reader.paper.id,
+    scale: null,
+  });
   const [isResizingChatPane, setIsResizingChatPane] = useState(false);
   const [selection, setSelection] = useState<WorkspaceCapturedSelection | null>(null);
+  const paperSurfaceHostRef = useRef<HTMLDivElement | null>(null);
   const chatColumnRef = useRef<HTMLElement | null>(null);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const hasRestoredChatPaneWidth = restoredChatPaneWidthPaperId === reader.paper.id;
+  const paperFitScale =
+    paperFitScaleState.paperId === reader.paper.id ? paperFitScaleState.scale : null;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
 
+    const storedWidth = readStoredChatPaneWidth(reader.paper.id);
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      setChatPaneWidth((currentWidth) =>
+        currentWidth === storedWidth ? currentWidth : storedWidth,
+      );
+      setRestoredChatPaneWidthPaperId((currentPaperId) =>
+        currentPaperId === reader.paper.id ? currentPaperId : reader.paper.id,
+      );
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [reader.paper.id]);
+
+  useLayoutEffect(() => {
+    if (!hasRestoredChatPaneWidth) {
+      return;
+    }
+
+    const host = paperSurfaceHostRef.current;
+
+    if (!host) {
+      return;
+    }
+
+    let animationFrameId = 0;
+    let disposed = false;
+    let currentFitScale: number | null = null;
+
+    const updateFitScale = () => {
+      animationFrameId = 0;
+
+      if (disposed) {
+        return;
+      }
+
+      const availableWidth = Math.round(host.getBoundingClientRect().width);
+
+      if (availableWidth <= 0) {
+        animationFrameId = window.requestAnimationFrame(updateFitScale);
+        return;
+      }
+
+      const nextFitScale = Math.max(
+        MIN_WORKSPACE_PAPER_FIT_SCALE,
+        Math.min(
+          MAX_WORKSPACE_PAPER_FIT_SCALE,
+          Number((availableWidth / WORKSPACE_PAPER_PAGE_WIDTH_PX).toFixed(3)),
+        ),
+      );
+
+      if (currentFitScale !== null && Math.abs(currentFitScale - nextFitScale) < 0.001) {
+        return;
+      }
+
+      currentFitScale = nextFitScale;
+      setPaperFitScaleState((currentState) => {
+        if (
+          currentState.paperId === reader.paper.id &&
+          currentState.scale !== null &&
+          Math.abs(currentState.scale - nextFitScale) < 0.001
+        ) {
+          return currentState;
+        }
+
+        return {
+          paperId: reader.paper.id,
+          scale: nextFitScale,
+        };
+      });
+    };
+
+    const scheduleFitScaleUpdate = () => {
+      if (animationFrameId) {
+        return;
+      }
+
+      animationFrameId = window.requestAnimationFrame(updateFitScale);
+    };
+
+    scheduleFitScaleUpdate();
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleFitScaleUpdate();
+    });
+    resizeObserver.observe(host);
+
+    return () => {
+      disposed = true;
+
+      if (animationFrameId) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
+      resizeObserver.disconnect();
+    };
+  }, [hasRestoredChatPaneWidth, reader.paper.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasRestoredChatPaneWidth) {
+      return;
+    }
+
     window.localStorage.setItem(getStorageKey(reader.paper.id), String(chatPaneWidth));
-  }, [chatPaneWidth, reader.paper.id]);
+  }, [chatPaneWidth, hasRestoredChatPaneWidth, reader.paper.id]);
 
   useEffect(() => {
     if (!isResizingChatPane) {
@@ -124,6 +246,8 @@ export function PaperReaderContent({
   const layoutStyle = {
     "--workspace-chat-width": `${chatPaneWidth}px`,
   } as CSSProperties;
+  const isPaperReaderLayoutPending =
+    !hasRestoredChatPaneWidth || paperFitScale === null;
 
   return (
     <div className="workspace-page paper-reader-page">
@@ -131,7 +255,14 @@ export function PaperReaderContent({
         className={["workspace-layout", "paper-reader-layout", isResizingChatPane ? "is-resizing" : ""].join(" ").trim()}
         style={layoutStyle}
       >
-        <div className="workspace-layout-body">
+        <div
+          className={[
+            "workspace-layout-body",
+            isPaperReaderLayoutPending ? "is-pending-paper-layout" : "",
+          ]
+            .join(" ")
+            .trim()}
+        >
           <section className="workspace-document-column">
             <div className="workspace-document-frame">
               <div className="workspace-surface-bar">
@@ -150,12 +281,17 @@ export function PaperReaderContent({
                 </div>
               </div>
 
-              <WorkspaceLatexSurface
-                hidden={false}
-                onSelectionCapture={setSelection}
-                renderedDocument={renderedDocument}
-                initialZoom={PAPER_READER_INITIAL_ZOOM}
-              />
+              <div className="workspace-paper-surface-host" ref={paperSurfaceHostRef}>
+                {paperFitScale !== null ? (
+                  <WorkspaceLatexSurface
+                    fitScale={paperFitScale}
+                    hidden={false}
+                    onSelectionCapture={setSelection}
+                    renderedDocument={renderedDocument}
+                    initialZoom={PAPER_READER_INITIAL_ZOOM}
+                  />
+                ) : null}
+              </div>
             </div>
           </section>
 

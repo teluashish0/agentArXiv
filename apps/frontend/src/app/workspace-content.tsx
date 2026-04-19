@@ -3,13 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  startTransition,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
   FileText,
@@ -24,6 +18,9 @@ import { WorkspaceChatKitPane } from "./workspace-chatkit-pane";
 import type { WorkspaceChatSurface, WorkspaceChatSurfaceContext } from "./workspace-chat-context";
 import {
   buildRenderedLatexDocument,
+  MAX_WORKSPACE_PAPER_FIT_SCALE,
+  MIN_WORKSPACE_PAPER_FIT_SCALE,
+  WORKSPACE_PAPER_PAGE_WIDTH_PX,
   type RenderedLatexCaret,
   type WorkspaceCapturedSelection,
   WorkspaceLatexSurface,
@@ -53,7 +50,6 @@ const DEFAULT_CHAT_PANE_WIDTH = LEGACY_DEFAULT_CHAT_PANE_WIDTH * 2;
 const PAPER_SURFACE_DEFAULT_CHAT_PANE_WIDTH = 468;
 const PAPER_SURFACE_MIN_CHAT_PANE_WIDTH = 340;
 const PAPER_SURFACE_MAX_CHAT_PANE_WIDTH = 624;
-const PAPER_SURFACE_INITIAL_ZOOM = 0.8;
 
 function getStorageKey(workspaceId: string) {
   return `agentArXiv.workspace.${workspaceId}.v10`;
@@ -204,13 +200,9 @@ export function WorkspaceContent({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const draftAvailable = workspace.surfaceAccess.draft.available;
-  const [persistedState] = useState<PersistedWorkspaceState>(() =>
-    readStoredWorkspaceState(workspace.id, draftAvailable),
-  );
-  const [paneTab, setPaneTab] = useState<PaneTab>(persistedState.paneTab);
-  const [chatPaneWidth, setChatPaneWidth] = useState(
-    persistedState.chatPaneWidth,
-  );
+  const defaultPersistedState = buildDefaultPersistedState(draftAvailable);
+  const [paneTab, setPaneTab] = useState<PaneTab>(defaultPersistedState.paneTab);
+  const [chatPaneWidth, setChatPaneWidth] = useState(defaultPersistedState.chatPaneWidth);
   const [isResizingChatPane, setIsResizingChatPane] = useState(false);
   const [pendingSelection, setPendingSelection] =
     useState<WorkspaceCapturedSelection | null>(null);
@@ -222,6 +214,10 @@ export function WorkspaceContent({
   const [decisionContextError, setDecisionContextError] = useState<string | null>(
     null,
   );
+  const [paperFitScale, setPaperFitScale] = useState<number | null>(null);
+  const [hasRestoredPersistedState, setHasRestoredPersistedState] = useState(false);
+  const hasRestoredPersistedStateRef = useRef(false);
+  const paperSurfaceHostRef = useRef<HTMLDivElement | null>(null);
   const chatColumnRef = useRef<HTMLElement | null>(null);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(
     null,
@@ -259,6 +255,101 @@ export function WorkspaceContent({
   const clampActiveChatPaneWidth = clampPaperSurfaceChatPaneWidth;
   const activeMinChatPaneWidth = PAPER_SURFACE_MIN_CHAT_PANE_WIDTH;
   const activeMaxChatPaneWidth = PAPER_SURFACE_MAX_CHAT_PANE_WIDTH;
+  const isPaperSurfaceLayoutPending =
+    isPaperSurfacePane && (!hasRestoredPersistedState || paperFitScale === null);
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const nextState = readStoredWorkspaceState(workspace.id, draftAvailable);
+    hasRestoredPersistedStateRef.current = true;
+
+    setPaneTab((currentPaneTab) =>
+      currentPaneTab === nextState.paneTab ? currentPaneTab : nextState.paneTab,
+    );
+    setChatPaneWidth((currentWidth) =>
+      currentWidth === nextState.chatPaneWidth ? currentWidth : nextState.chatPaneWidth,
+    );
+    setHasRestoredPersistedState(true);
+  }, [draftAvailable, workspace.id]);
+
+  useLayoutEffect(() => {
+    if (!hasRestoredPersistedState) {
+      setPaperFitScale(null);
+      return;
+    }
+
+    if (!isPaperSurfacePane) {
+      return;
+    }
+
+    const host = paperSurfaceHostRef.current;
+
+    if (!host) {
+      return;
+    }
+
+    let animationFrameId = 0;
+    let disposed = false;
+    let currentFitScale: number | null = null;
+
+    const updateFitScale = () => {
+      animationFrameId = 0;
+
+      if (disposed) {
+        return;
+      }
+
+      const availableWidth = Math.round(host.getBoundingClientRect().width);
+
+      if (availableWidth <= 0) {
+        animationFrameId = window.requestAnimationFrame(updateFitScale);
+        return;
+      }
+
+      const nextFitScale = Math.max(
+        MIN_WORKSPACE_PAPER_FIT_SCALE,
+        Math.min(
+          MAX_WORKSPACE_PAPER_FIT_SCALE,
+          Number((availableWidth / WORKSPACE_PAPER_PAGE_WIDTH_PX).toFixed(3)),
+        ),
+      );
+
+      if (currentFitScale !== null && Math.abs(currentFitScale - nextFitScale) < 0.001) {
+        return;
+      }
+
+      currentFitScale = nextFitScale;
+      setPaperFitScale(nextFitScale);
+    };
+
+    const scheduleFitScaleUpdate = () => {
+      if (animationFrameId) {
+        return;
+      }
+
+      animationFrameId = window.requestAnimationFrame(updateFitScale);
+    };
+
+    scheduleFitScaleUpdate();
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleFitScaleUpdate();
+    });
+    resizeObserver.observe(host);
+
+    return () => {
+      disposed = true;
+
+      if (animationFrameId) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
+      resizeObserver.disconnect();
+    };
+  }, [hasRestoredPersistedState, isPaperSurfacePane]);
 
   useEffect(() => {
     if (!activeDecisionId) {
@@ -309,7 +400,7 @@ export function WorkspaceContent({
   }, [activeDecisionId, workspace.id, workspace.chatContext.governanceDecisions]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !hasRestoredPersistedStateRef.current) {
       return;
     }
 
@@ -324,32 +415,6 @@ export function WorkspaceContent({
       JSON.stringify(nextState),
     );
   }, [activeChatSurface, activePaneTab, chatPaneWidth, workspace.id]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    // The notebook owns local Jupyter view state, so route refreshes while the
-    // experiments tab is open cause visible remount/flicker.
-    if (activePaneTab === "experiments") {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-
-      startTransition(() => {
-        router.refresh();
-      });
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [activePaneTab, router, workspace.id]);
 
   useEffect(() => {
     if (!isResizingChatPane) {
@@ -418,7 +483,7 @@ export function WorkspaceContent({
       className={[
         "workspace-page",
         "workspace-compact-page",
-        isPaperSurfacePane ? "paper-reader-page workspace-paper-page" : "",
+        isPaperSurfacePane ? "paper-reader-page" : "",
       ]
         .join(" ")
         .trim()}
@@ -434,7 +499,14 @@ export function WorkspaceContent({
           .trim()}
         style={layoutStyle}
       >
-        <div className="workspace-layout-body">
+        <div
+          className={[
+            "workspace-layout-body",
+            isPaperSurfaceLayoutPending ? "is-pending-paper-layout" : "",
+          ]
+            .join(" ")
+            .trim()}
+        >
           <section className="workspace-document-column">
             <div className="workspace-document-frame">
               <div className="workspace-surface-bar">
@@ -553,27 +625,35 @@ export function WorkspaceContent({
                 </div>
               ) : null}
 
-              <WorkspaceLatexSurface
-                hidden={activePaneTab !== "proposal"}
-                initialZoom={PAPER_SURFACE_INITIAL_ZOOM}
-                onSelectionCapture={(selection) => {
-                  setPendingSelection(selection);
-                }}
-                renderedDocument={proposalRendered}
-              />
+              {isPaperSurfacePane ? (
+                <div className="workspace-paper-surface-host" ref={paperSurfaceHostRef}>
+                  {paperFitScale !== null ? (
+                    <>
+                      <WorkspaceLatexSurface
+                        fitScale={paperFitScale}
+                        hidden={activePaneTab !== "proposal"}
+                        onSelectionCapture={(selection) => {
+                          setPendingSelection(selection);
+                        }}
+                        renderedDocument={proposalRendered}
+                      />
 
-              <WorkspaceLatexSurface
-                hidden={activePaneTab !== "draft"}
-                initialZoom={PAPER_SURFACE_INITIAL_ZOOM}
-                onSelectionCapture={(selection) => {
-                  if (!draftAvailable) {
-                    return;
-                  }
+                      <WorkspaceLatexSurface
+                        fitScale={paperFitScale}
+                        hidden={activePaneTab !== "draft"}
+                        onSelectionCapture={(selection) => {
+                          if (!draftAvailable) {
+                            return;
+                          }
 
-                  setPendingSelection(selection);
-                }}
-                renderedDocument={draftRendered}
-              />
+                          setPendingSelection(selection);
+                        }}
+                        renderedDocument={draftRendered}
+                      />
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
 
               {activePaneTab === "experiments" ? (
                 <div className="workspace-sandbox-panel-shell">

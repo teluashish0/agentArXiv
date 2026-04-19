@@ -4,6 +4,7 @@ import { repository } from "@/lib/repository";
 
 export const CHATKIT_SHARED_SECRET_HEADER = "x-agentarxiv-chatkit-secret";
 const DEFAULT_CHATKIT_SHARED_SECRET = "agentarxiv-local-chatkit-secret";
+const LOCALHOST_APP_URL_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/?$/i;
 
 export function resolveChatKitSharedSecret() {
   return process.env.AGENTARXIV_CHATKIT_SHARED_SECRET || DEFAULT_CHATKIT_SHARED_SECRET;
@@ -19,8 +20,27 @@ export function requireTrustedChatKitSecret(request: Request) {
   }
 }
 
-export async function requireWorkspaceMemberSession(request: Request, workspaceId: string) {
+function resolveLocalWorkspaceViewerClerkUserId() {
+  const configuredUserId =
+    process.env.AGENTARXIV_LOCAL_WORKSPACE_VIEWER_CLERK_USER_ID?.trim() ?? "";
+  const appUrl = process.env.AGENTARXIV_APP_URL?.trim() ?? "";
+  const isLocalApp =
+    appUrl.length === 0 || LOCALHOST_APP_URL_PATTERN.test(appUrl);
+
+  if (!configuredUserId || process.env.NODE_ENV === "production" || !isLocalApp) {
+    return null;
+  }
+
+  return configuredUserId;
+}
+
+export async function getWorkspaceViewerClerkUserId() {
   const clerkUserId = await getSignedInClerkUserId();
+  return clerkUserId ?? resolveLocalWorkspaceViewerClerkUserId();
+}
+
+export async function requireWorkspaceMemberSession(request: Request, workspaceId: string) {
+  const clerkUserId = await getWorkspaceViewerClerkUserId();
 
   if (!clerkUserId) {
     throw new Error("Sign in required");

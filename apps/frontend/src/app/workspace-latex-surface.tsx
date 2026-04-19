@@ -143,6 +143,12 @@ const PAGE_HEIGHT_IN = 11;
 const DOUBLE_COLUMN_GAP_IN = 0.28;
 const DEFAULT_TEXT_WIDTH_EM = 0.5;
 const PAGINATION_SAFETY_MARGIN_IN = 0.06;
+export const WORKSPACE_PAPER_PAGE_WIDTH_PX = 8.5 * 96;
+export const MIN_WORKSPACE_PAPER_FIT_SCALE = 0.4;
+export const MAX_WORKSPACE_PAPER_FIT_SCALE = 2;
+const MIN_WORKSPACE_PAPER_ZOOM = 0.5;
+const MAX_WORKSPACE_PAPER_ZOOM = 2;
+const WORKSPACE_PAPER_ZOOM_STEP = 0.08;
 
 function parseNumericValue(value: string) {
   const parsed = Number.parseFloat(value);
@@ -1236,11 +1242,13 @@ export function buildRenderedLatexDocument(
 }
 
 export function WorkspaceLatexSurface({
+  fitScale,
   hidden,
   renderedDocument,
   onSelectionCapture,
-  initialZoom = 1.44,
+  initialZoom = 1,
 }: {
+  fitScale: number;
   hidden: boolean;
   renderedDocument: RenderedLatexDocument;
   onSelectionCapture: (selection: WorkspaceCapturedSelection | null) => void;
@@ -1250,14 +1258,24 @@ export function WorkspaceLatexSurface({
   const { affiliations, getAuthorAffiliationIndex } = buildAffiliations(renderedDocument.authors);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLElement | null>>([]);
-  const [zoom, setZoom] = useState(() => Math.max(0.6, Math.min(2, initialZoom)));
+  const [zoomFactor, setZoomFactor] = useState(() =>
+    Math.max(MIN_WORKSPACE_PAPER_ZOOM, Math.min(MAX_WORKSPACE_PAPER_ZOOM, initialZoom)),
+  );
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = renderedDocument.pages.length;
   const paperPresenceEntries = buildPaperPresenceEntries(renderedDocument.carets);
   const displayedPresenceEntries = paperPresenceEntries.slice(0, 5);
   const overflowPresenceCount = Math.max(0, paperPresenceEntries.length - displayedPresenceEntries.length);
-  const clampedZoom = Math.max(0.6, Math.min(2, zoom));
-  const zoomPercentage = Math.round(clampedZoom * 100);
+  const clampedFitScale = Math.max(
+    MIN_WORKSPACE_PAPER_FIT_SCALE,
+    Math.min(MAX_WORKSPACE_PAPER_FIT_SCALE, fitScale),
+  );
+  const clampedZoomFactor = Math.max(
+    MIN_WORKSPACE_PAPER_ZOOM,
+    Math.min(MAX_WORKSPACE_PAPER_ZOOM, zoomFactor),
+  );
+  const totalScale = clampedFitScale * clampedZoomFactor;
+  const zoomPercentage = Math.round(clampedZoomFactor * 100);
   const paperStyle = {
     "--workspace-paper-page-width": template.typography.pageWidth,
     "--workspace-paper-header-padding": template.typography.headerPadding,
@@ -1290,9 +1308,16 @@ export function WorkspaceLatexSurface({
     "--workspace-paper-reference-line-height": template.typography.referenceLineHeight,
     "--workspace-paper-reference-spacing": template.typography.referenceSpacing,
     "--workspace-paper-page-number-offset": template.typography.pageNumberOffset,
-    "--workspace-paper-scale": String(clampedZoom),
+    "--workspace-paper-fit-scale": String(clampedFitScale),
+    "--workspace-paper-zoom-factor": String(clampedZoomFactor),
+    "--workspace-paper-total-scale": String(totalScale),
   } as CSSProperties;
+
   useEffect(() => {
+    if (hidden) {
+      return;
+    }
+
     const container = scrollRef.current;
 
     if (!container) {
@@ -1318,7 +1343,9 @@ export function WorkspaceLatexSurface({
         }
       }
 
-      setCurrentPage(nextPage);
+      setCurrentPage((currentPage) =>
+        currentPage === nextPage ? currentPage : nextPage,
+      );
     };
 
     handleScroll();
@@ -1327,14 +1354,24 @@ export function WorkspaceLatexSurface({
     return () => {
       container.removeEventListener("scroll", handleScroll);
     };
-  }, [clampedZoom, renderedDocument.pages]);
+  }, [hidden, renderedDocument.surface, totalPages, totalScale]);
 
   const scaleDown = () => {
-    setZoom((currentZoom) => Math.max(0.6, Number((currentZoom - 0.08).toFixed(2))));
+    setZoomFactor((currentZoomFactor) =>
+      Math.max(
+        MIN_WORKSPACE_PAPER_ZOOM,
+        Number((currentZoomFactor - WORKSPACE_PAPER_ZOOM_STEP).toFixed(2)),
+      ),
+    );
   };
 
   const scaleUp = () => {
-    setZoom((currentZoom) => Math.min(2, Number((currentZoom + 0.08).toFixed(2))));
+    setZoomFactor((currentZoomFactor) =>
+      Math.min(
+        MAX_WORKSPACE_PAPER_ZOOM,
+        Number((currentZoomFactor + WORKSPACE_PAPER_ZOOM_STEP).toFixed(2)),
+      ),
+    );
   };
 
   const captureSelection = () => {
@@ -1491,7 +1528,12 @@ export function WorkspaceLatexSurface({
   };
 
   return (
-    <div className="workspace-editor-surface" hidden={hidden} aria-hidden={hidden} style={paperStyle}>
+    <div
+      aria-hidden={hidden}
+      className="workspace-editor-surface"
+      hidden={hidden}
+      style={paperStyle}
+    >
       <header className="workspace-toolbar">
         <div className="workspace-toolbar-spacer" aria-hidden="true" />
 
@@ -1569,143 +1611,147 @@ export function WorkspaceLatexSurface({
         <div className="workspace-paper-stage">
           {renderedDocument.pages.map((page, pageIndex) => (
             <div className="workspace-paper-page-shell" key={`${renderedDocument.title}-page-${page.number}`}>
-              <article
-                className="workspace-paper-page"
-                data-page-number={page.number}
-                ref={(node) => {
-                  pageRefs.current[pageIndex] = node;
-                }}
-              >
-                {page.includeHeader ? (
-                  <header className="workspace-paper-header" data-page-number={page.number} data-line-number={1}>
-                    <h1 className="workspace-paper-title">{renderedDocument.paperTitle}</h1>
+              <div className="workspace-paper-page-viewport">
+                <div className="workspace-paper-page-sizer">
+                  <article
+                    className="workspace-paper-page"
+                    data-page-number={page.number}
+                    ref={(node) => {
+                      pageRefs.current[pageIndex] = node;
+                    }}
+                  >
+                    {page.includeHeader ? (
+                      <header className="workspace-paper-header" data-page-number={page.number} data-line-number={1}>
+                        <h1 className="workspace-paper-title">{renderedDocument.paperTitle}</h1>
 
-                    <div className="workspace-paper-authors">
-                      <p className="workspace-paper-author-line">
-                        {renderedDocument.authors.map((author, authorIndex) => (
-                          <span key={author.id}>
-                            {authorIndex > 0 ? ", " : ""}
-                            <span>{author.name}</span>
-                            <sup>{getAuthorAffiliationIndex(author)}</sup>
-                          </span>
-                        ))}
-                      </p>
-
-                      <div className="workspace-paper-affiliations">
-                        {affiliations.map((affiliation) => (
-                          <p className="workspace-paper-affiliation-line" key={affiliation.index}>
-                            <sup>{affiliation.index}</sup>
-                            <span>{affiliation.label}</span>
+                        <div className="workspace-paper-authors">
+                          <p className="workspace-paper-author-line">
+                            {renderedDocument.authors.map((author, authorIndex) => (
+                              <span key={author.id}>
+                                {authorIndex > 0 ? ", " : ""}
+                                <span>{author.name}</span>
+                                <sup>{getAuthorAffiliationIndex(author)}</sup>
+                              </span>
+                            ))}
                           </p>
-                        ))}
-                      </div>
 
-                      {renderedDocument.authors.some((author) => author.email) ? (
-                        <p className="workspace-paper-correspondence">
-                          Correspondence: {renderedDocument.authors.map((author) => author.email).join(", ")}
-                        </p>
-                      ) : null}
-                    </div>
-                  </header>
-                ) : null}
+                          <div className="workspace-paper-affiliations">
+                            {affiliations.map((affiliation) => (
+                              <p className="workspace-paper-affiliation-line" key={affiliation.index}>
+                                <sup>{affiliation.index}</sup>
+                                <span>{affiliation.label}</span>
+                              </p>
+                            ))}
+                          </div>
 
-                {page.includeFrontmatter && renderedDocument.abstractText ? (
-                  <section className="workspace-paper-frontmatter" data-page-number={page.number} data-line-number={1}>
-                    {template.frontMatterStyle === "ieee" ? (
-                      <p className="workspace-paper-abstract workspace-paper-abstract-inline">
-                        <strong>Abstract</strong>
-                        <span>&mdash;</span>
-                        <span>
-                          <ManuscriptRichText text={renderedDocument.abstractText} />
-                        </span>
-                      </p>
-                    ) : (
-                      <div className="workspace-paper-abstract">
-                        <h2>Abstract</h2>
-                        <p>
-                          <ManuscriptRichText text={renderedDocument.abstractText} />
-                        </p>
-                      </div>
-                    )}
-
-                    {renderedDocument.keywords?.length ? (
-                      <p className="workspace-paper-keywords">
-                        <strong>Keywords:</strong> {renderedDocument.keywords.join(", ")}
-                      </p>
+                          {renderedDocument.authors.some((author) => author.email) ? (
+                            <p className="workspace-paper-correspondence">
+                              Correspondence: {renderedDocument.authors.map((author) => author.email).join(", ")}
+                            </p>
+                          ) : null}
+                        </div>
+                      </header>
                     ) : null}
-                  </section>
-                ) : null}
 
-                <div
-                  className={[
-                    "workspace-paper-body",
-                    !page.includeHeader && !page.includeFrontmatter ? "is-continuation-page" : "",
-                    renderedDocument.layoutMode === "single" ? "is-single-column" : "is-double-column",
-                  ]
-                    .join(" ")
-                    .trim()}
-                >
-                  {page.sections.map((section) => (
-                    <section
+                    {page.includeFrontmatter && renderedDocument.abstractText ? (
+                      <section className="workspace-paper-frontmatter" data-page-number={page.number} data-line-number={1}>
+                        {template.frontMatterStyle === "ieee" ? (
+                          <p className="workspace-paper-abstract workspace-paper-abstract-inline">
+                            <strong>Abstract</strong>
+                            <span>&mdash;</span>
+                            <span>
+                              <ManuscriptRichText text={renderedDocument.abstractText} />
+                            </span>
+                          </p>
+                        ) : (
+                          <div className="workspace-paper-abstract">
+                            <h2>Abstract</h2>
+                            <p>
+                              <ManuscriptRichText text={renderedDocument.abstractText} />
+                            </p>
+                          </div>
+                        )}
+
+                        {renderedDocument.keywords?.length ? (
+                          <p className="workspace-paper-keywords">
+                            <strong>Keywords:</strong> {renderedDocument.keywords.join(", ")}
+                          </p>
+                        ) : null}
+                      </section>
+                    ) : null}
+
+                    <div
                       className={[
-                        "workspace-paper-section",
-                        section.isContinuation ? "is-continuation" : "",
+                        "workspace-paper-body",
+                        !page.includeHeader && !page.includeFrontmatter ? "is-continuation-page" : "",
+                        renderedDocument.layoutMode === "single" ? "is-single-column" : "is-double-column",
                       ]
                         .join(" ")
                         .trim()}
-                      data-agent-id={section.caret?.agentId}
-                      data-agent-name={section.caret?.agentName}
-                      data-page-number={page.number}
-                      data-section-id={section.id}
-                      data-section-title={section.title}
-                      data-line-number={section.lineNumber}
-                      key={section.fragmentId}
                     >
-                      {section.showHeading ? (
-                        <h2 className="workspace-paper-section-title">
-                          <span className="workspace-paper-section-number">{section.sectionNumber}.</span>
-                          <span>{section.title}</span>
-                        </h2>
+                      {page.sections.map((section) => (
+                        <section
+                          className={[
+                            "workspace-paper-section",
+                            section.isContinuation ? "is-continuation" : "",
+                          ]
+                            .join(" ")
+                            .trim()}
+                          data-agent-id={section.caret?.agentId}
+                          data-agent-name={section.caret?.agentName}
+                          data-page-number={page.number}
+                          data-section-id={section.id}
+                          data-section-title={section.title}
+                          data-line-number={section.lineNumber}
+                          key={section.fragmentId}
+                        >
+                          {section.showHeading ? (
+                            <h2 className="workspace-paper-section-title">
+                              <span className="workspace-paper-section-number">{section.sectionNumber}.</span>
+                              <span>{section.title}</span>
+                            </h2>
+                          ) : null}
+
+                          {section.paragraphs.map((paragraph, paragraphIndex) => {
+                            return (
+                              <p className="workspace-paper-paragraph" key={`${section.id}-${paragraphIndex}`}>
+                                {renderParagraphWithAgentOverlay(section, paragraph, paragraphIndex)}
+                              </p>
+                            );
+                          })}
+
+                          {section.assets.map((asset) => renderSectionAsset(section, asset))}
+                        </section>
+                      ))}
+
+                      {page.includeReferences && renderedDocument.references?.length ? (
+                        <section
+                          className="workspace-paper-section workspace-paper-references"
+                          data-page-number={page.number}
+                          data-line-number={1}
+                        >
+                          <h2 className="workspace-paper-section-title">
+                            <span className="workspace-paper-section-number">{renderedDocument.sections.length + 1}.</span>
+                            <span>References</span>
+                          </h2>
+
+                          <ol className="workspace-paper-reference-list">
+                            {renderedDocument.references.map((reference, referenceIndex) => (
+                              <li className="workspace-paper-reference-item" key={`${renderedDocument.title}-ref-${referenceIndex}`}>
+                                {reference}
+                              </li>
+                            ))}
+                          </ol>
+                        </section>
                       ) : null}
+                    </div>
 
-                      {section.paragraphs.map((paragraph, paragraphIndex) => {
-                        return (
-                          <p className="workspace-paper-paragraph" key={`${section.id}-${paragraphIndex}`}>
-                            {renderParagraphWithAgentOverlay(section, paragraph, paragraphIndex)}
-                          </p>
-                        );
-                      })}
-
-                      {section.assets.map((asset) => renderSectionAsset(section, asset))}
-                    </section>
-                  ))}
-
-                  {page.includeReferences && renderedDocument.references?.length ? (
-                    <section
-                      className="workspace-paper-section workspace-paper-references"
-                      data-page-number={page.number}
-                      data-line-number={1}
-                    >
-                      <h2 className="workspace-paper-section-title">
-                        <span className="workspace-paper-section-number">{renderedDocument.sections.length + 1}.</span>
-                        <span>References</span>
-                      </h2>
-
-                      <ol className="workspace-paper-reference-list">
-                        {renderedDocument.references.map((reference, referenceIndex) => (
-                          <li className="workspace-paper-reference-item" key={`${renderedDocument.title}-ref-${referenceIndex}`}>
-                            {reference}
-                          </li>
-                        ))}
-                      </ol>
-                    </section>
-                  ) : null}
+                    <footer className="workspace-paper-page-number" aria-hidden="true">
+                      {page.number}
+                    </footer>
+                  </article>
                 </div>
-
-                <footer className="workspace-paper-page-number" aria-hidden="true">
-                  {page.number}
-                </footer>
-              </article>
+              </div>
             </div>
           ))}
         </div>

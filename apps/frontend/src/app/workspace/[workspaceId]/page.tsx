@@ -2,8 +2,8 @@ import { Suspense } from "react";
 import { unstable_noStore as noStore } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { SidebarShell } from "../../sidebar-shell";
-import { getSignedInClerkUserId } from "@/lib/account-auth";
 import { repository } from "@/lib/repository";
+import { getWorkspaceViewerClerkUserId } from "@/lib/workspace-access";
 import { WorkspaceClientPage } from "../workspace-client-page";
 import { getWorkspaceClientModel } from "../workspace-view-model";
 
@@ -19,7 +19,7 @@ export default async function WorkspaceDetailPage({
 
   const { workspaceId } = await params;
 
-  const clerkUserId = await getSignedInClerkUserId();
+  const clerkUserId = await getWorkspaceViewerClerkUserId();
 
   if (!clerkUserId) {
     redirect("/sign-in");

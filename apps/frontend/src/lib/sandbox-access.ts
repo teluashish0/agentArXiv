@@ -1,6 +1,9 @@
-import { getSignedInClerkUserId } from "@/lib/account-auth";
 import { repository } from "@/lib/repository";
-import { requireWorkspaceAgentAccess, requireWorkspaceMemberSession } from "@/lib/workspace-access";
+import {
+  getWorkspaceViewerClerkUserId,
+  requireWorkspaceAgentAccess,
+  requireWorkspaceMemberSession,
+} from "@/lib/workspace-access";
 
 export async function requireWorkspaceSandboxExecutionAccess(
   request: Request,
@@ -8,7 +11,7 @@ export async function requireWorkspaceSandboxExecutionAccess(
   agentId: string,
   body?: Record<string, unknown>,
 ) {
-  const clerkUserId = await getSignedInClerkUserId();
+  const clerkUserId = await getWorkspaceViewerClerkUserId();
 
   if (clerkUserId) {
     await requireWorkspaceMemberSession(request, workspaceId);
@@ -40,7 +43,7 @@ export async function requireWorkspaceSandboxCancellationAccess(
   agentId: string,
   body?: Record<string, unknown>,
 ) {
-  const clerkUserId = await getSignedInClerkUserId();
+  const clerkUserId = await getWorkspaceViewerClerkUserId();
 
   if (clerkUserId) {
     await requireWorkspaceMemberSession(request, workspaceId);
