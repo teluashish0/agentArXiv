@@ -50,25 +50,36 @@ type PersistedWorkspaceState = {
 
 const LEGACY_DEFAULT_CHAT_PANE_WIDTH = 520;
 const DEFAULT_CHAT_PANE_WIDTH = LEGACY_DEFAULT_CHAT_PANE_WIDTH * 2;
-const MIN_CHAT_PANE_WIDTH = 360;
-const MAX_CHAT_PANE_WIDTH = 1180;
+const PAPER_SURFACE_DEFAULT_CHAT_PANE_WIDTH = 468;
+const PAPER_SURFACE_MIN_CHAT_PANE_WIDTH = 340;
+const PAPER_SURFACE_MAX_CHAT_PANE_WIDTH = 624;
+const PAPER_SURFACE_INITIAL_ZOOM = 0.8;
 
 function getStorageKey(workspaceId: string) {
   return `agentArXiv.workspace.${workspaceId}.v10`;
 }
 
-function clampChatPaneWidth(value: number) {
-  return Math.min(
-    MAX_CHAT_PANE_WIDTH,
-    Math.max(MIN_CHAT_PANE_WIDTH, Math.round(value)),
+function clampPaneWidth(value: number, minWidth: number, maxWidth: number) {
+  return Math.min(maxWidth, Math.max(minWidth, Math.round(value)));
+}
+
+function clampPaperSurfaceChatPaneWidth(value: number) {
+  return clampPaneWidth(
+    value,
+    PAPER_SURFACE_MIN_CHAT_PANE_WIDTH,
+    PAPER_SURFACE_MAX_CHAT_PANE_WIDTH,
   );
 }
 
-function normalizeChatPaneWidth(value: number) {
-  const nextValue =
+function getPaperSurfaceChatPaneWidth(value: number) {
+  const normalizedValue =
     value === LEGACY_DEFAULT_CHAT_PANE_WIDTH ? DEFAULT_CHAT_PANE_WIDTH : value;
 
-  return clampChatPaneWidth(nextValue);
+  if (normalizedValue === DEFAULT_CHAT_PANE_WIDTH) {
+    return PAPER_SURFACE_DEFAULT_CHAT_PANE_WIDTH;
+  }
+
+  return clampPaperSurfaceChatPaneWidth(normalizedValue);
 }
 
 function buildDefaultPersistedState(
@@ -76,7 +87,7 @@ function buildDefaultPersistedState(
 ): PersistedWorkspaceState {
   return {
     paneTab: draftAvailable ? "draft" : "proposal",
-    chatPaneWidth: DEFAULT_CHAT_PANE_WIDTH,
+    chatPaneWidth: PAPER_SURFACE_DEFAULT_CHAT_PANE_WIDTH,
     chatSurface: "workspace",
   };
 }
@@ -99,7 +110,7 @@ function sanitizePersistedWorkspaceState(
     paneTab,
     chatPaneWidth:
       typeof value.chatPaneWidth === "number"
-        ? normalizeChatPaneWidth(value.chatPaneWidth)
+        ? getPaperSurfaceChatPaneWidth(value.chatPaneWidth)
         : defaults.chatPaneWidth,
     chatSurface: "workspace",
   };
@@ -229,6 +240,8 @@ export function WorkspaceContent({
   );
   const activePaneTab =
     paneTab === "draft" && !draftAvailable ? "proposal" : paneTab;
+  const isPaperSurfacePane =
+    activePaneTab === "proposal" || activePaneTab === "draft";
   const activeChatSurface: WorkspaceChatSurface = "workspace";
   const activeDecisionId = searchParams.get("decision");
   const activeSelection = pendingSelection;
@@ -242,6 +255,10 @@ export function WorkspaceContent({
   );
   const activeChatContext =
     activeDecisionId && decisionChatContext ? decisionChatContext : workspace.chatContext;
+  const activeChatPaneWidth = getPaperSurfaceChatPaneWidth(chatPaneWidth);
+  const clampActiveChatPaneWidth = clampPaperSurfaceChatPaneWidth;
+  const activeMinChatPaneWidth = PAPER_SURFACE_MIN_CHAT_PANE_WIDTH;
+  const activeMaxChatPaneWidth = PAPER_SURFACE_MAX_CHAT_PANE_WIDTH;
 
   useEffect(() => {
     if (!activeDecisionId) {
@@ -349,7 +366,7 @@ export function WorkspaceContent({
       const nextWidth =
         resizeState.startWidth - (event.clientX - resizeState.startX);
 
-      setChatPaneWidth(clampChatPaneWidth(nextWidth));
+      setChatPaneWidth(clampActiveChatPaneWidth(nextWidth));
     };
 
     const stopResizing = () => {
@@ -366,7 +383,7 @@ export function WorkspaceContent({
       window.removeEventListener("pointerup", stopResizing);
       window.removeEventListener("pointercancel", stopResizing);
     };
-  }, [isResizingChatPane]);
+  }, [clampActiveChatPaneWidth, isResizingChatPane]);
 
   function handlePaneTabChange(nextPaneTab: PaneTab) {
     if (nextPaneTab === "draft" && !draftAvailable) {
@@ -382,24 +399,37 @@ export function WorkspaceContent({
     }
 
     const startWidth =
-      chatColumnRef.current?.getBoundingClientRect().width ?? chatPaneWidth;
+      chatColumnRef.current?.getBoundingClientRect().width ?? activeChatPaneWidth;
 
     resizeStateRef.current = {
       startX: clientX,
       startWidth,
     };
-    setChatPaneWidth(clampChatPaneWidth(startWidth));
+    setChatPaneWidth(clampActiveChatPaneWidth(startWidth));
     setIsResizingChatPane(true);
   }
 
   const layoutStyle = {
-    "--workspace-chat-width": `${chatPaneWidth}px`,
+    "--workspace-chat-width": `${activeChatPaneWidth}px`,
   } as CSSProperties;
 
   return (
-    <div className="workspace-page">
+    <div
+      className={[
+        "workspace-page",
+        "workspace-compact-page",
+        isPaperSurfacePane ? "paper-reader-page workspace-paper-page" : "",
+      ]
+        .join(" ")
+        .trim()}
+    >
       <div
-        className={["workspace-layout", isResizingChatPane ? "is-resizing" : ""]
+        className={[
+          "workspace-layout",
+          "workspace-compact-layout",
+          isPaperSurfacePane ? "paper-reader-layout workspace-paper-layout" : "",
+          isResizingChatPane ? "is-resizing" : "",
+        ]
           .join(" ")
           .trim()}
         style={layoutStyle}
@@ -525,6 +555,7 @@ export function WorkspaceContent({
 
               <WorkspaceLatexSurface
                 hidden={activePaneTab !== "proposal"}
+                initialZoom={PAPER_SURFACE_INITIAL_ZOOM}
                 onSelectionCapture={(selection) => {
                   setPendingSelection(selection);
                 }}
@@ -533,6 +564,7 @@ export function WorkspaceContent({
 
               <WorkspaceLatexSurface
                 hidden={activePaneTab !== "draft"}
+                initialZoom={PAPER_SURFACE_INITIAL_ZOOM}
                 onSelectionCapture={(selection) => {
                   if (!draftAvailable) {
                     return;
@@ -650,25 +682,25 @@ export function WorkspaceContent({
               if (event.key === "ArrowLeft") {
                 event.preventDefault();
                 setChatPaneWidth((currentWidth) =>
-                  clampChatPaneWidth(currentWidth + 24),
+                  clampActiveChatPaneWidth(currentWidth + 24),
                 );
               }
 
               if (event.key === "ArrowRight") {
                 event.preventDefault();
                 setChatPaneWidth((currentWidth) =>
-                  clampChatPaneWidth(currentWidth - 24),
+                  clampActiveChatPaneWidth(currentWidth - 24),
                 );
               }
 
               if (event.key === "Home") {
                 event.preventDefault();
-                setChatPaneWidth(MAX_CHAT_PANE_WIDTH);
+                setChatPaneWidth(activeMaxChatPaneWidth);
               }
 
               if (event.key === "End") {
                 event.preventDefault();
-                setChatPaneWidth(MIN_CHAT_PANE_WIDTH);
+                setChatPaneWidth(activeMinChatPaneWidth);
               }
             }}
           />

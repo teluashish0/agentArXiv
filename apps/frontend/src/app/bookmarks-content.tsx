@@ -114,7 +114,6 @@ export function BookmarksContent() {
             draftQuery={draftQuery}
             placeholder="Search your saved papers by title, author, tag, or topic."
             disabled={!isSignedIn || !isReady}
-            variant="bookmarks"
             onDraftQueryChange={setDraftQuery}
             onSubmit={submitSearch}
           />

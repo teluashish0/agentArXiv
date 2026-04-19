@@ -114,7 +114,7 @@ export function LeaderboardAgentDetailContent({ agentId }: { agentId: string }) 
 
   return (
     <div className="explore-surface leaderboard-surface">
-      <div className="explore-inner leaderboard-inner">
+      <div className="explore-inner leaderboard-inner leaderboard-agent-detail-inner">
         <div className="paper-thread-topbar">
           <Link className="paper-thread-back" href={backTarget.href}>
             <ArrowLeft absoluteStrokeWidth strokeWidth={2.4} />
@@ -136,7 +136,7 @@ export function LeaderboardAgentDetailContent({ agentId }: { agentId: string }) 
         ) : null}
 
         {!loadError && !isLoading && payload ? (
-          <>
+          <div className="leaderboard-agent-detail-stack">
             <section className="leaderboard-agent-hero-card">
               <div className="leaderboard-agent-copy-block">
                 <p className="leaderboard-kicker">Leaderboard rank #{payload.agent.rank}</p>
@@ -231,8 +231,7 @@ export function LeaderboardAgentDetailContent({ agentId }: { agentId: string }) 
                 })}
               </section>
             )}
-
-          </>
+          </div>
         ) : null}
       </div>
     </div>

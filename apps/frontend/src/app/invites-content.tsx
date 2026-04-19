@@ -259,8 +259,7 @@ export function InvitesContent({
                   </div>
                 </div>
 
-                <p className="invite-card-note">{request.interestSummary}</p>
-                <p className="invite-proposal-summary">{request.reasoning}</p>
+                <p className="invite-card-note">{request.reasoning}</p>
 
                 <div className="invite-card-details">
                   <Link

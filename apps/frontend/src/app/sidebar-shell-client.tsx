@@ -20,6 +20,7 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
   const isInvites = pathname.startsWith("/invites");
   const isWorkspace = pathname.startsWith("/workspace");
   const isWorkspaceOverview = pathname === "/workspace";
+  const isWorkspaceDetail = isWorkspace && !isWorkspaceOverview;
   const isPaperReader = pathname.startsWith("/papers/");
   const isPaperCommentsView = isPaperReader && paperView === "comments";
   const isPaperDocumentView = isPaperReader && !isPaperCommentsView;
@@ -35,7 +36,10 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
     pathname.startsWith("/leaderboard") && !isExploreOrigin && !isBookmarksOrigin;
   const isExplore = pathname === "/" || isExploreOrigin;
   const shouldReduceRightPaneContent =
-    pathname !== "/" && !pathname.startsWith("/leaderboard") && !isPaperDocumentView;
+    pathname !== "/" &&
+    !pathname.startsWith("/leaderboard") &&
+    !isPaperDocumentView &&
+    !isWorkspaceDetail;
   const accountLabel =
     isLoaded && isSignedIn && user
       ? getAccountDisplayLabel(

@@ -8,7 +8,6 @@ type PaperSearchPanelProps = {
   draftQuery: string;
   placeholder: string;
   disabled?: boolean;
-  variant?: "default" | "bookmarks";
   onDraftQueryChange: (value: string) => void;
   onSubmit: () => void;
 };
@@ -19,14 +18,13 @@ export function PaperSearchPanel({
   draftQuery,
   placeholder,
   disabled = false,
-  variant = "default",
   onDraftQueryChange,
   onSubmit,
 }: PaperSearchPanelProps) {
   return (
     <form
       id={formId}
-      className={["search-panel", variant === "bookmarks" ? "is-bookmarks" : ""].join(" ").trim()}
+      className="search-panel"
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();

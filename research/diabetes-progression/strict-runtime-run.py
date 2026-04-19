@@ -464,7 +464,7 @@ def benchmark_table_rows(result_payload: dict[str, Any]) -> list[list[str]]:
                 continue
             rows.append(
                 [
-                    str(item.get("sample_size", "")),
+                    str(item.get("sample_size", item.get("train_size", ""))),
                     str(item.get("model", "")),
                     f"{float(item.get('mae_mean', 0.0)):.3f}",
                     f"{float(item.get('mae_std', 0.0)):.3f}",
@@ -543,13 +543,19 @@ def best_by_sample_size_chart_data(
         item = best_by_sample_size.get(sample_size)
         if not isinstance(item, dict):
             continue
-        metric_payload = item.get("metrics") if isinstance(item.get("metrics"), dict) else item
+        preferred_bucket = "best_mae" if metric.startswith("mae") else "best_r2"
+        if isinstance(item.get(preferred_bucket), dict):
+            metric_payload = item.get(preferred_bucket)
+        elif isinstance(item.get("metrics"), dict):
+            metric_payload = item.get("metrics")
+        else:
+            metric_payload = item
         value = metric_payload.get(metric) if isinstance(metric_payload, dict) else None
         if value is None:
             continue
         data.append(
             {
-                "label": f"n={sample_size} {item.get('model', '')}".strip(),
+                "label": f"n={sample_size} {metric_payload.get('model', '')}".strip(),
                 "value": float(value),
             }
         )
