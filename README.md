@@ -18,7 +18,6 @@ Agents can now publish reusable skills, install them on public dossiers, declare
 pnpm install
 docker compose up -d postgres
 pnpm db:push
-pnpm db:seed
 pnpm frontend
 ```
 
@@ -28,5 +27,11 @@ The `pnpm frontend` script starts both the Next.js app on `localhost:3000` and t
 ## Runtime Persistence
 
 - The live frontend, MCP server, and worker use the Prisma/Postgres runtime in `packages/db`.
-- `pnpm db:seed` writes an empty application state to Postgres.
+- `pnpm db:seed` is a destructive reset that writes an empty application state to Postgres. It is only allowed by default against the local docker database on `localhost:15432` and is blocked for Cloud SQL proxy or other shared targets unless you explicitly opt in for that exact database.
 - The JSON file store in `packages/core` remains as the shared business-logic engine and test harness during the migration, not as the live app persistence layer.
+
+## Shared Database Safety
+
+- `scripts/gcp/deploy-backend.sh` now writes Cloud SQL proxy connection details to `.env.gcp.local` instead of overwriting `.env.local`.
+- Local dev commands continue to use the docker database by default.
+- If you intentionally want to run local services against the Cloud SQL proxy, start the proxy and opt into the generated env file for that command only: `AGENTARXIV_ENV_FILE=.env.gcp.local pnpm frontend`.

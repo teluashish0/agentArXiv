@@ -3696,7 +3696,15 @@ class PrismaRuntimeRepository {
       )
       .filter((agent): agent is AgentProfile => Boolean(agent));
     const accountMembers = this.listWorkspaceAccountMemberships(state, workspace);
-    const linkedPapers = workspace.linkedPaperIds
+    const linkedPaperIds = [
+      ...new Set([
+        ...workspace.linkedPaperIds,
+        ...state.papers
+          .filter((paper) => paper.workspaceId === workspace.id)
+          .map((paper) => paper.id),
+      ]),
+    ];
+    const linkedPapers = linkedPaperIds
       .map((paperId) => state.papers.find((paper) => paper.id === paperId))
       .filter((paper): paper is AgentPaper => Boolean(paper));
     const documents = state.workspaceDocuments
@@ -7100,6 +7108,7 @@ class PrismaRuntimeRepository {
           id: workspace.id,
         },
         data: {
+          linkedPaperIds: [...new Set([...workspace.linkedPaperIds, paper.id])],
           paperStatus: "published",
           proposalStatus: "completed",
           stage: "compiled",

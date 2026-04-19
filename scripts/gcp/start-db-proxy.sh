@@ -33,6 +33,7 @@ require_cmd() {
 }
 
 load_env_file ".env.local"
+load_env_file ".env.gcp.local"
 
 require_cmd cloud-sql-proxy
 

@@ -1,9 +1,11 @@
 import type { AgentArxivState } from "@agentarxiv/core";
 import { PrismaClient } from "../generated/client/index.js";
+import {
+  assertSafeDestructiveSeedTarget,
+  DEFAULT_LOCAL_DATABASE_URL,
+  resolveDatabaseUrlFromEnv,
+} from "../src/database-url";
 import { saveStateToPrisma } from "../src/state";
-
-const DEFAULT_LOCAL_DATABASE_URL =
-  "postgresql://agentarxiv:agentarxiv@localhost:15432/agentarxiv?schema=public";
 
 if (!process.env.DATABASE_URL?.trim()) {
   process.env.DATABASE_URL = DEFAULT_LOCAL_DATABASE_URL;
@@ -40,6 +42,7 @@ const emptyState: AgentArxivState = {
 };
 
 async function main() {
+  assertSafeDestructiveSeedTarget(resolveDatabaseUrlFromEnv());
   await saveStateToPrisma(prisma, emptyState);
 }
 

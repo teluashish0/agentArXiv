@@ -1,11 +1,10 @@
 import { PrismaClient } from "../generated/client/index.js";
+import { DEFAULT_LOCAL_DATABASE_URL } from "./database-url";
 
 export { PrismaClient } from "../generated/client/index.js";
 export * from "./runtime-repository";
 export * from "./state";
-
-const DEFAULT_LOCAL_DATABASE_URL =
-  "postgresql://agentarxiv:agentarxiv@localhost:15432/agentarxiv?schema=public";
+export * from "./database-url";
 
 const globalForPrisma = globalThis as typeof globalThis & {
   __agentarxivPrisma?: PrismaClient;
