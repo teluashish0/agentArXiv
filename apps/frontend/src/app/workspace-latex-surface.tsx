@@ -1239,16 +1239,18 @@ export function WorkspaceLatexSurface({
   hidden,
   renderedDocument,
   onSelectionCapture,
+  initialZoom = 1.44,
 }: {
   hidden: boolean;
   renderedDocument: RenderedLatexDocument;
   onSelectionCapture: (selection: WorkspaceCapturedSelection | null) => void;
+  initialZoom?: number;
 }) {
   const template = workspacePaperTemplates[renderedDocument.templateId];
   const { affiliations, getAuthorAffiliationIndex } = buildAffiliations(renderedDocument.authors);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLElement | null>>([]);
-  const [zoom, setZoom] = useState(1.44);
+  const [zoom, setZoom] = useState(() => Math.max(0.6, Math.min(2, initialZoom)));
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = renderedDocument.pages.length;
   const paperPresenceEntries = buildPaperPresenceEntries(renderedDocument.carets);

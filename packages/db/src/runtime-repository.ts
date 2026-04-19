@@ -5941,114 +5941,137 @@ class PrismaRuntimeRepository {
     };
   }) {
     const now = new Date().toISOString();
+    let attempt = 0;
 
-    await this.runWrite(async (tx) => {
-      const state = await loadStateFromPrisma(tx);
-      const execution = state.sandboxExecutions.find(
-        (item) => item.id === input.executionId,
-      );
+    while (true) {
+      try {
+        await this.runWrite(async (tx) => {
+          const state = await loadStateFromPrisma(tx);
+          const execution = state.sandboxExecutions.find(
+            (item) => item.id === input.executionId,
+          );
 
-      if (!execution) {
-        throw new Error(`Sandbox execution ${input.executionId} not found`);
-      }
+          if (!execution) {
+            throw new Error(`Sandbox execution ${input.executionId} not found`);
+          }
 
-      let artifactId = execution.artifactId;
+          let artifactId = execution.artifactId;
 
-      if (input.artifact) {
-        artifactId = createId("artifact");
-        await tx.artifact.create({
-          data: {
-            id: artifactId,
-            workspaceId: execution.workspaceId,
-            agentId: execution.agentId,
-            type: input.artifact.type,
-            title: input.artifact.title,
-            content: input.artifact.content,
-            skillIds: [],
-            createdAt: new Date(now),
-          },
+          if (input.artifact) {
+            artifactId = createId("artifact");
+            await tx.artifact.create({
+              data: {
+                id: artifactId,
+                workspaceId: execution.workspaceId,
+                agentId: execution.agentId,
+                type: input.artifact.type,
+                title: input.artifact.title,
+                content: input.artifact.content,
+                skillIds: [],
+                createdAt: new Date(now),
+              },
+            });
+          }
+
+          execution.status = input.status ?? execution.status;
+          execution.providerExecutionId =
+            input.providerExecutionId ?? execution.providerExecutionId;
+          execution.stdout = input.stdout ?? execution.stdout;
+          execution.stderr = input.stderr ?? execution.stderr;
+          execution.exitCode = input.exitCode ?? execution.exitCode;
+          execution.resultSummary = input.resultSummary ?? execution.resultSummary;
+          execution.metrics = input.metrics ?? execution.metrics;
+          execution.outputs = input.outputs ?? execution.outputs;
+          execution.notebookOutputIds =
+            input.notebookOutputIds ?? execution.notebookOutputIds;
+          execution.billedRuntimeSeconds =
+            input.billedRuntimeSeconds ?? execution.billedRuntimeSeconds;
+          execution.startedAt = input.startedAt ?? execution.startedAt;
+          execution.finishedAt = input.finishedAt ?? execution.finishedAt;
+          execution.errorMessage = input.errorMessage ?? execution.errorMessage;
+          execution.artifactId = artifactId;
+          execution.updatedAt = now;
+
+          if (
+            execution.executionMode === "notebook_cell" &&
+            execution.notebookCellId &&
+            (Boolean(input.notebookCellOutputs) ||
+              (input.status !== undefined &&
+                !sandboxBlockingStatuses.has(input.status)))
+          ) {
+            await this.ensureWorkspaceNotebookTx(tx, state, execution.workspaceId);
+            this.syncNotebookExecutionResultToState(
+              state,
+              execution,
+              now,
+              input.notebookCellOutputs,
+              input.notebookExecutionCount,
+            );
+          }
+
+          await tx.sandboxExecution.update({
+            where: { id: execution.id },
+            data: {
+              status: execution.status,
+              providerExecutionId: execution.providerExecutionId,
+              stdout: execution.stdout,
+              stderr: execution.stderr,
+              exitCode: execution.exitCode,
+              resultSummary: execution.resultSummary,
+              metrics: execution.metrics,
+              outputs: execution.outputs,
+              billedRuntimeSeconds: execution.billedRuntimeSeconds,
+              startedAt: execution.startedAt ? new Date(execution.startedAt) : null,
+              finishedAt: execution.finishedAt
+                ? new Date(execution.finishedAt)
+                : null,
+              errorMessage: execution.errorMessage,
+              artifactId: execution.artifactId,
+              notebookOutputIds: execution.notebookOutputIds ?? [],
+              updatedAt: new Date(now),
+            },
+          });
+          await tx.sandboxSession.updateMany({
+            where: { id: execution.sessionId },
+            data: {
+              lastActiveAt: new Date(now),
+              updatedAt: new Date(now),
+            },
+          });
+
+          if (
+            execution.executionMode === "notebook_cell" &&
+            execution.notebookCellId &&
+            (Boolean(input.notebookCellOutputs) ||
+              (input.status !== undefined &&
+                !sandboxBlockingStatuses.has(input.status)))
+          ) {
+            const { notebook, lease } = this.ensureWorkspaceNotebookState(
+              state,
+              execution.workspaceId,
+            );
+            await this.updateWorkspaceNotebookTx(tx, notebook);
+            await this.updateWorkspaceNotebookLeaseTx(tx, lease);
+          }
         });
+        break;
+      } catch (error) {
+        const retryable =
+          (typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "P2034") ||
+          (error instanceof Error &&
+            /write conflict|deadlock/i.test(error.message));
+
+        if (!retryable || attempt >= 5) {
+          throw error;
+        }
+
+        attempt += 1;
+        await new Promise((resolve) => setTimeout(resolve, 150 * attempt));
       }
-
-      execution.status = input.status ?? execution.status;
-      execution.providerExecutionId =
-        input.providerExecutionId ?? execution.providerExecutionId;
-      execution.stdout = input.stdout ?? execution.stdout;
-      execution.stderr = input.stderr ?? execution.stderr;
-      execution.exitCode = input.exitCode ?? execution.exitCode;
-      execution.resultSummary = input.resultSummary ?? execution.resultSummary;
-      execution.metrics = input.metrics ?? execution.metrics;
-      execution.outputs = input.outputs ?? execution.outputs;
-      execution.notebookOutputIds =
-        input.notebookOutputIds ?? execution.notebookOutputIds;
-      execution.billedRuntimeSeconds =
-        input.billedRuntimeSeconds ?? execution.billedRuntimeSeconds;
-      execution.startedAt = input.startedAt ?? execution.startedAt;
-      execution.finishedAt = input.finishedAt ?? execution.finishedAt;
-      execution.errorMessage = input.errorMessage ?? execution.errorMessage;
-      execution.artifactId = artifactId;
-      execution.updatedAt = now;
-
-      if (
-        execution.executionMode === "notebook_cell" &&
-        execution.notebookCellId &&
-        (Boolean(input.notebookCellOutputs) ||
-          (input.status !== undefined && !sandboxBlockingStatuses.has(input.status)))
-      ) {
-        await this.ensureWorkspaceNotebookTx(tx, state, execution.workspaceId);
-        this.syncNotebookExecutionResultToState(
-          state,
-          execution,
-          now,
-          input.notebookCellOutputs,
-          input.notebookExecutionCount,
-        );
-      }
-
-      await tx.sandboxExecution.update({
-        where: { id: execution.id },
-        data: {
-          status: execution.status,
-          providerExecutionId: execution.providerExecutionId,
-          stdout: execution.stdout,
-          stderr: execution.stderr,
-          exitCode: execution.exitCode,
-          resultSummary: execution.resultSummary,
-          metrics: execution.metrics,
-          outputs: execution.outputs,
-          billedRuntimeSeconds: execution.billedRuntimeSeconds,
-          startedAt: execution.startedAt ? new Date(execution.startedAt) : null,
-          finishedAt: execution.finishedAt
-              ? new Date(execution.finishedAt)
-              : null,
-          errorMessage: execution.errorMessage,
-          artifactId: execution.artifactId,
-          notebookOutputIds: execution.notebookOutputIds ?? [],
-          updatedAt: new Date(now),
-        },
-      });
-      await tx.sandboxSession.updateMany({
-        where: { id: execution.sessionId },
-        data: {
-          lastActiveAt: new Date(now),
-          updatedAt: new Date(now),
-        },
-      });
-
-      if (
-        execution.executionMode === "notebook_cell" &&
-        execution.notebookCellId &&
-        (Boolean(input.notebookCellOutputs) ||
-          (input.status !== undefined && !sandboxBlockingStatuses.has(input.status)))
-      ) {
-        const { notebook, lease } = this.ensureWorkspaceNotebookState(
-          state,
-          execution.workspaceId,
-        );
-        await this.updateWorkspaceNotebookTx(tx, notebook);
-        await this.updateWorkspaceNotebookLeaseTx(tx, lease);
-      }
-    });
+    }
 
     return this.getSandboxExecution(input.executionId);
   }

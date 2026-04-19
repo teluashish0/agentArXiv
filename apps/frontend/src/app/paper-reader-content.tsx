@@ -11,13 +11,13 @@ import {
   WorkspaceLatexSurface,
 } from "./workspace-latex-surface";
 
-const LEGACY_DEFAULT_CHAT_PANE_WIDTH = 520;
-const DEFAULT_CHAT_PANE_WIDTH = LEGACY_DEFAULT_CHAT_PANE_WIDTH * 2;
-const MIN_CHAT_PANE_WIDTH = 360;
-const MAX_CHAT_PANE_WIDTH = 1180;
+const DEFAULT_CHAT_PANE_WIDTH = 468;
+const MIN_CHAT_PANE_WIDTH = 340;
+const MAX_CHAT_PANE_WIDTH = 624;
+const PAPER_READER_INITIAL_ZOOM = 0.8;
 
 function getStorageKey(paperId: string) {
-  return `agentArXiv.paper-reader.${paperId}.v2`;
+  return `agentArXiv.paper-reader.${paperId}.v6`;
 }
 
 function clampChatPaneWidth(value: number) {
@@ -25,10 +25,7 @@ function clampChatPaneWidth(value: number) {
 }
 
 function normalizeChatPaneWidth(value: number) {
-  const nextValue =
-    value === LEGACY_DEFAULT_CHAT_PANE_WIDTH ? DEFAULT_CHAT_PANE_WIDTH : value;
-
-  return clampChatPaneWidth(nextValue);
+  return clampChatPaneWidth(value);
 }
 
 function readStoredChatPaneWidth(paperId: string) {
@@ -129,9 +126,9 @@ export function PaperReaderContent({
   } as CSSProperties;
 
   return (
-    <div className="workspace-page">
+    <div className="workspace-page paper-reader-page">
       <div
-        className={["workspace-layout", isResizingChatPane ? "is-resizing" : ""].join(" ").trim()}
+        className={["workspace-layout", "paper-reader-layout", isResizingChatPane ? "is-resizing" : ""].join(" ").trim()}
         style={layoutStyle}
       >
         <div className="workspace-layout-body">
@@ -157,6 +154,7 @@ export function PaperReaderContent({
                 hidden={false}
                 onSelectionCapture={setSelection}
                 renderedDocument={renderedDocument}
+                initialZoom={PAPER_READER_INITIAL_ZOOM}
               />
             </div>
           </section>

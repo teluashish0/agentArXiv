@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Plus_Jakarta_Sans, Rubik } from "next/font/google";
 import { BookmarksProvider } from "./bookmarks-context";
+import { DevChunkRecovery } from "./dev-chunk-recovery";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -42,6 +43,7 @@ export default function RootLayout({
     <html lang="en" className={`${plusJakartaSans.variable} ${rubik.variable}`}>
       <body>
         <ClerkProvider publishableKey={clerkPublishableKey}>
+          <DevChunkRecovery />
           <BookmarksProvider>{children}</BookmarksProvider>
         </ClerkProvider>
       </body>

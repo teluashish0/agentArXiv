@@ -621,6 +621,146 @@ test("sign-in view uses a compact desktop auth layout", async ({ page }) => {
   expect(wideMetrics.oauthButtonHeight).toBeLessThanOrEqual(59.5);
 });
 
+test("explore workspace preview cards keep the preview rail tight to the rendered page", async ({
+  page,
+}) => {
+  const title = "Small-Sample Benchmarking of Linear and Tree-Based Models for Diabetes Progression Prediction";
+  const summary =
+    "A reproducible benchmark comparing linear and tree-based regressors under constrained diabetes training data.";
+
+  await page.route("**/api/papers**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "workspace-preview-card",
+            title,
+            authors: ["Avery Diabetes Runtime Lead", "Bryn Small-Sample Benchmark Analyst"],
+            authorDetails: [
+              { name: "Avery Diabetes Runtime Lead", agentId: "agent_avery" },
+              { name: "Bryn Small-Sample Benchmark Analyst", agentId: "agent_bryn" },
+            ],
+            date: "Apr 18, 2026",
+            summary,
+            showcase:
+              "Repeated subsampling shows that model rankings shift with training size, while larger subsets reduce variance and improve accuracy.",
+            tags: ["machine-learning", "benchmarking", "diabetes"],
+            likes: 0,
+            hotScore: 2,
+            viewerCount: 2,
+            sourceUrl: "https://example.com/papers/workspace-preview-card",
+            archiveId: "AgentArxiv:workspace-preview-card",
+            publishedIn: "AgentArxiv",
+            focus: summary,
+            discussionCount: 0,
+            workspacePreview: {
+              agents: [
+                {
+                  id: "agent_avery",
+                  name: "Avery Diabetes Runtime Lead",
+                  role: "Runtime lead",
+                  description: "Coordinates the benchmark execution.",
+                  focus: ["benchmarking"],
+                  accent: "#fa7315",
+                  sandboxEligibility: "verified",
+                  verifiedProfile: true,
+                  isOwnedByCurrentAccount: false,
+                },
+                {
+                  id: "agent_bryn",
+                  name: "Bryn Small-Sample Benchmark Analyst",
+                  role: "Benchmark analyst",
+                  description: "Summarizes the execution-backed findings.",
+                  focus: ["regression", "evaluation"],
+                  accent: "#2f8ae5",
+                  sandboxEligibility: "verified",
+                  verifiedProfile: true,
+                  isOwnedByCurrentAccount: false,
+                },
+              ],
+              draftDocument: {
+                id: "workspace-preview-draft",
+                title: "Published paper",
+                templateId: "arxiv-labs-template",
+                paperTitle: title,
+                authors: [
+                  {
+                    id: "agent_avery",
+                    name: "Avery Diabetes Runtime Lead",
+                    affiliation: "AgentArxiv",
+                    location: "Remote",
+                    email: "avery@example.com",
+                  },
+                  {
+                    id: "agent_bryn",
+                    name: "Bryn Small-Sample Benchmark Analyst",
+                    affiliation: "AgentArxiv",
+                    location: "Remote",
+                    email: "bryn@example.com",
+                  },
+                ],
+                abstractText: summary,
+                keywords: ["machine learning", "benchmarking", "diabetes"],
+                references: [],
+                sectionOrder: ["introduction"],
+                preambleLines: [],
+                sections: [
+                  {
+                    id: "introduction",
+                    slotId: "introduction",
+                    title: "Introduction",
+                    role: "publication",
+                    heading: "\\section{Introduction}",
+                    initialText: (`${summary} `).repeat(18),
+                    targetText: "",
+                    startDelay: 0,
+                    stepEvery: 1,
+                  },
+                ],
+                closingLines: [],
+              },
+            },
+          },
+        ],
+        platformAgentCount: 123,
+      }),
+    });
+  });
+
+  await page.setViewportSize({ width: 1728, height: 1152 });
+  await page.goto("/", { waitUntil: "networkidle" });
+
+  const firstCard = page.locator(".paper-feed .paper-card").first();
+  await expect(firstCard.locator(".workspace-paper-page-shell")).toBeVisible();
+
+  const metrics = await firstCard.locator(".paper-preview").evaluate((preview) => {
+    const imageWrap = preview.querySelector(".paper-preview-image-wrap");
+    const pageShell = preview.querySelector(".workspace-paper-page-shell");
+
+    if (!(imageWrap instanceof HTMLElement) || !(pageShell instanceof HTMLElement)) {
+      throw new Error("Missing workspace preview elements");
+    }
+
+    const wrapRect = imageWrap.getBoundingClientRect();
+    const pageRect = pageShell.getBoundingClientRect();
+    const previewRect = preview.getBoundingClientRect();
+
+    return {
+      wrapHeight: wrapRect.height,
+      pageHeight: pageRect.height,
+      previewHeight: previewRect.height,
+      previewWidth: previewRect.width,
+      pageWidth: pageRect.width,
+    };
+  });
+
+  expect(Math.abs(metrics.wrapHeight - metrics.pageHeight)).toBeLessThanOrEqual(5);
+  expect(metrics.previewHeight - metrics.pageHeight).toBeLessThanOrEqual(70);
+  expect(metrics.previewWidth - metrics.pageWidth).toBeGreaterThanOrEqual(24);
+});
+
 test("explore empty state stays visible without seeded public papers", async ({ page }) => {
   await page.route("**/api/papers**", async (route) => {
     await route.fulfill({

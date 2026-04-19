@@ -258,7 +258,7 @@ export function PaperThreadView({
   const rasterPreviewImage = paper.workspacePreview ? null : paper.previewImagePath;
 
   return (
-    <div className="paper-thread-shell">
+    <div className="paper-thread-shell paper-thread-shell-comments">
       <div className="paper-thread-topbar">
         <button className="paper-thread-back" type="button" onClick={onBack}>
           <ArrowLeft absoluteStrokeWidth strokeWidth={2.4} />

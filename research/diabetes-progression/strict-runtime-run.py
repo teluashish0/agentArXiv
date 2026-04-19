@@ -980,7 +980,31 @@ async def call_tool_payload(
     name: str,
     arguments: dict[str, Any] | None = None,
 ) -> Any:
-    return extract_text_payload(await server.call_tool(name, arguments or {}))
+    max_attempts = 4
+    for attempt in range(max_attempts):
+        try:
+            payload = extract_text_payload(await server.call_tool(name, arguments or {}))
+        except Exception as error:
+            if attempt == max_attempts - 1 or not is_retryable_lease_conflict(error):
+                raise
+            await asyncio.sleep(min(5, attempt + 1))
+            continue
+
+        if isinstance(payload, dict):
+            raw_text = payload.get("raw_text")
+            if (
+                isinstance(raw_text, str)
+                and raw_text.strip()
+                and set(payload) == {"raw_text"}
+                and is_retryable_lease_conflict(RuntimeError(raw_text))
+                and attempt < max_attempts - 1
+            ):
+                await asyncio.sleep(min(5, attempt + 1))
+                continue
+
+        return payload
+
+    raise RuntimeError(f"Tool {name} failed after {max_attempts} retry attempts.")
 
 
 async def call_tool_record(
@@ -995,6 +1019,68 @@ async def call_tool_record(
     if isinstance(raw_text, str) and raw_text.strip() and set(payload) == {"raw_text"}:
         raise RuntimeError(f"Tool {name} error: {raw_text.strip()}")
     return payload
+
+
+def is_retryable_lease_conflict(error: Exception) -> bool:
+    message = str(error)
+    return (
+        "write conflict or a deadlock" in message
+        or "Please retry your transaction" in message
+        or "Transaction not found" in message
+        or "Transaction API error" in message
+    )
+
+
+async def heartbeat_lease_with_retry(
+    server: MCPServerSse,
+    workspace_id: str,
+    agent_id: str,
+    *,
+    max_attempts: int = 5,
+) -> None:
+    for attempt in range(max_attempts):
+        try:
+            await call_tool_record(
+                server,
+                "heartbeat_lease",
+                {"workspaceId": workspace_id, "agentId": agent_id},
+            )
+            return
+        except RuntimeError as error:
+            if not is_retryable_lease_conflict(error) or attempt == max_attempts - 1:
+                raise
+            await asyncio.sleep(min(5, attempt + 1))
+
+
+async def release_lease_when_idle(
+    server: MCPServerSse,
+    workspace_id: str,
+    agent_id: str,
+    *,
+    timeout_seconds: int = 120,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            await call_tool_record(
+                server,
+                "release_lease",
+                {"workspaceId": workspace_id, "agentId": agent_id},
+            )
+            return
+        except RuntimeError as error:
+            message = str(error)
+            if is_retryable_lease_conflict(error):
+                if time.monotonic() >= deadline:
+                    raise
+                await asyncio.sleep(2)
+                continue
+            if "cannot be released while a cell execution is still active" in message:
+                if time.monotonic() >= deadline:
+                    raise
+                await asyncio.sleep(5)
+                continue
+            raise
 
 
 async def call_tool_entity(
@@ -1014,6 +1100,7 @@ async def wait_for_execution(
     timeout_seconds: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     deadline = time.monotonic() + timeout_seconds
+    last_heartbeat_at = time.monotonic()
     while time.monotonic() < deadline:
         activity = await call_tool_record(
             server,
@@ -1025,11 +1112,9 @@ async def wait_for_execution(
                 continue
             if execution.get("status") in TERMINAL_EXECUTION_STATUSES:
                 return activity, execution
-        await call_tool_record(
-            server,
-            "heartbeat_lease",
-            {"workspaceId": workspace_id, "agentId": agent_id},
-        )
+        if time.monotonic() - last_heartbeat_at >= 60:
+            await heartbeat_lease_with_retry(server, workspace_id, agent_id)
+            last_heartbeat_at = time.monotonic()
         await asyncio.sleep(10)
 
     raise TimeoutError(
@@ -1523,10 +1608,10 @@ async def main() -> None:
                 timeout_seconds=STRICT_TIMEOUT_SECONDS,
             )
         finally:
-            await call_tool_record(
+            await release_lease_when_idle(
                 benchmarker_mcp,
-                "release_lease",
-                {"workspaceId": workspace_id, "agentId": benchmarker.agent_id},
+                workspace_id,
+                benchmarker.agent_id,
             )
 
         if completed_execution["status"] != "completed":

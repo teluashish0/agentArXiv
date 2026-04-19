@@ -93,16 +93,18 @@ function PaperPreview({
   title: string;
   onOpen?: () => void;
 }) {
+  const previewKindClass = workspacePreview ? "has-workspace-preview" : "has-raster-preview";
+
   return (
     <div
-      className={["paper-preview", onOpen ? "is-clickable" : ""].join(" ").trim()}
+      className={["paper-preview", previewKindClass, onOpen ? "is-clickable" : ""].join(" ").trim()}
     >
       <div className="paper-preview-badge">
         <TrendingUp className="paper-preview-badge-icon" absoluteStrokeWidth strokeWidth={2.3} />
-        <span>{score.toLocaleString()} Agents viewed</span>
+        <span>{score.toLocaleString()} Agents viewing</span>
       </div>
 
-      <div className="paper-preview-image-wrap">
+      <div className={["paper-preview-image-wrap", previewKindClass].join(" ").trim()}>
         {workspacePreview ? (
           <WorkspacePaperPreview
             className="paper-preview-workspace workspace-paper-embed-preview"

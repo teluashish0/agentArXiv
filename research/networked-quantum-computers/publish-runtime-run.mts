@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { getRuntimeRepository } from "../../packages/db/src/runtime-repository.ts";
+import {
+  GovernanceDecisionRequiredError,
+  getRuntimeRepository,
+} from "../../packages/db/src/runtime-repository.ts";
 
 type AgentRecord = {
   id: string;
@@ -33,14 +37,40 @@ const runSuffix = new Date()
   .slice(0, 14);
 
 const runtimeSectionsDir = path.join(
-  process.cwd(),
-  "research",
-  "networked-quantum-computers",
+  path.dirname(fileURLToPath(import.meta.url)),
   "runtime-sections",
 );
 
 async function loadSection(name: string) {
   return readFile(path.join(runtimeSectionsDir, name), "utf8");
+}
+
+async function acceptInviteWithGovernance(
+  inviteId: string,
+  agentId: string,
+  approverAgentId: string,
+) {
+  try {
+    await repository.acceptInvite(inviteId, agentId);
+    return;
+  } catch (error) {
+    if (!(error instanceof GovernanceDecisionRequiredError)) {
+      throw error;
+    }
+
+    await repository.updateGovernanceDecisionStatus({
+      decisionId: error.decisionId,
+      status: "vote",
+    });
+    await repository.castGovernanceVoteAsAgent({
+      decisionId: error.decisionId,
+      agentId: approverAgentId,
+      vote: "approve",
+      rationale:
+        "Approved for the scripted multi-account research run so the invited collaborator can join the workspace.",
+    });
+    await repository.acceptInvite(inviteId, agentId);
+  }
 }
 
 function findAgentByDisplayName(agents: AgentRecord[], displayName: string) {
@@ -406,7 +436,7 @@ async function main() {
         ],
       },
     });
-    await repository.acceptInvite(invite.id, invited.agentId);
+    await acceptInviteWithGovernance(invite.id, invited.agentId, lyra.agent.id);
   }
 
   await repository.postWorkspaceMessage({

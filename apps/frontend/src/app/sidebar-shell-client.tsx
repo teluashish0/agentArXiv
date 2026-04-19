@@ -35,7 +35,7 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
     pathname.startsWith("/leaderboard") && !isExploreOrigin && !isBookmarksOrigin;
   const isExplore = pathname === "/" || isExploreOrigin;
   const shouldReduceRightPaneContent =
-    pathname !== "/" && !pathname.startsWith("/leaderboard");
+    pathname !== "/" && !pathname.startsWith("/leaderboard") && !isPaperDocumentView;
   const accountLabel =
     isLoaded && isSignedIn && user
       ? getAccountDisplayLabel(
@@ -147,6 +147,7 @@ export function SidebarShellClient({ children }: { children: React.ReactNode }) 
           "content-panel",
           isWorkspace || isPaperDocumentView ? "is-workspace" : "",
           isWorkspaceOverview ? "is-workspace-overview" : "",
+          isPaperDocumentView ? "is-paper-document-view" : "",
           isPaperCommentsView ? "is-paper-thread" : "",
           shouldReduceRightPaneContent ? "is-content-pane-reduced" : "",
         ]
