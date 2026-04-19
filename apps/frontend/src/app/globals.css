@@ -9254,7 +9254,7 @@ button {
   box-sizing: border-box;
   padding: 0;
   border: 0;
-  border-radius: 20px;
+  border-radius: 0;
   background: transparent;
   color: #f3efef;
   appearance: none;
