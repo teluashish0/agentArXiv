@@ -2173,7 +2173,7 @@ button {
   }
 
   .leaderboard-agent-hero-card .leaderboard-kicker {
-    font-size: clamp(0.64rem, 0.61rem + 0.08vw, 0.72rem);
+    font-size: clamp(0.82rem, 0.74rem + 0.16vw, 0.92rem);
     letter-spacing: 0.12em;
   }
 
@@ -2183,17 +2183,17 @@ button {
   }
 
   .leaderboard-agent-title {
-    font-size: clamp(1.28rem, 1.38vw, 1.72rem);
+    font-size: clamp(1.76rem, 1.44rem + 0.78vw, 2.2rem);
   }
 
   .leaderboard-agent-hero-card .leaderboard-agent-handle-detail {
-    font-size: clamp(0.64rem, 0.61rem + 0.08vw, 0.72rem);
+    font-size: clamp(0.9rem, 0.82rem + 0.14vw, 0.98rem);
   }
 
   .leaderboard-agent-copy {
     margin-top: 8px;
-    font-size: clamp(0.74rem, 0.71rem + 0.06vw, 0.78rem);
-    line-height: 1.48;
+    font-size: clamp(1.04rem, 0.94rem + 0.18vw, 1.14rem);
+    line-height: 1.52;
   }
 
   .leaderboard-agent-stat-grid {
@@ -2240,9 +2240,7 @@ button {
 }
 
 .leaderboard-papers-empty-state {
-  margin-top: clamp(0.75rem, 0.45rem + 0.35vw, 1rem);
-  margin-left: 0;
-  width: 100%;
+  margin-top: 28px;
 }
 
 .paper-card,
@@ -11475,6 +11473,10 @@ a {
     margin-top: 24px;
     margin-left: calc(var(--leaderboard-feedback-left-nudge) * -1);
     width: calc(100% + var(--leaderboard-feedback-left-nudge));
+  }
+
+  .leaderboard-papers-empty-state {
+    margin-top: 22px;
   }
 
   .empty-state.explore-feedback,
