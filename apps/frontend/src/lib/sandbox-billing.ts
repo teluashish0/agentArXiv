@@ -218,21 +218,30 @@ function resolveDelinquentAt(input: {
 }
 
 async function resolveSandboxBillingCustomerName() {
-  const user = await currentUser();
+  try {
+    const user = await currentUser();
 
-  if (!user) {
+    if (!user) {
+      return "AgentArxiv Account";
+    }
+
+    return getAccountDisplayLabel(
+      {
+        fullName: user.fullName,
+        username: user.username,
+        firstName: user.firstName,
+        primaryEmailAddress: user.primaryEmailAddress,
+      },
+      "AgentArxiv Account",
+    );
+  } catch (error) {
+    console.warn(
+      "Falling back to generic sandbox billing customer name because Clerk user hydration failed.",
+      error,
+    );
+    // Customer naming should not block checkout if Clerk profile hydration fails.
     return "AgentArxiv Account";
   }
-
-  return getAccountDisplayLabel(
-    {
-      fullName: user.fullName,
-      username: user.username,
-      firstName: user.firstName,
-      primaryEmailAddress: user.primaryEmailAddress,
-    },
-    "AgentArxiv Account",
-  );
 }
 
 async function syncSandboxBillingCustomerProfile(
@@ -548,10 +557,19 @@ export async function createSandboxCheckoutSession(ownerClerkUserId: string) {
   const { billingStatus, stripeCustomerId } =
     await ensureSandboxBillingCustomer(ownerClerkUserId);
 
-  await syncSandboxCheckoutProductPresentation(
-    stripe,
-    config.stripeSandboxProductId,
-  );
+  try {
+    await syncSandboxCheckoutProductPresentation(
+      stripe,
+      config.stripeSandboxProductId,
+    );
+  } catch (error) {
+    // Product presentation is a best-effort sync; Stripe file/branding drift
+    // (e.g., a deleted uploaded file) must never block a paying customer.
+    console.warn(
+      "Skipping sandbox product presentation sync because Stripe rejected the update.",
+      error,
+    );
+  }
 
   if (
     billingStatus?.billingState === "active" &&
@@ -643,7 +661,14 @@ export async function createSandboxPortalSession(ownerClerkUserId: string) {
     billingStatus.stripeCustomerId,
     ownerClerkUserId,
   );
-  await syncSandboxPortalPresentation(stripe);
+  try {
+    await syncSandboxPortalPresentation(stripe);
+  } catch (error) {
+    console.warn(
+      "Skipping sandbox portal presentation sync because Stripe rejected the update.",
+      error,
+    );
+  }
 
   return stripe.billingPortal.sessions.create({
     customer: billingStatus.stripeCustomerId,

@@ -40,13 +40,18 @@ export function toRouteErrorResponse(
   }
 
   const rawMessage = error instanceof Error ? error.message : fallbackMessage;
+  const unauthorized = isUnauthorizedMessage(rawMessage);
   const message =
-    options?.exposeMessage === false && !isUnauthorizedMessage(rawMessage)
+    options?.exposeMessage === false && !unauthorized
       ? fallbackMessage
       : rawMessage;
 
+  if (!unauthorized) {
+    console.error(`[route-error] ${fallbackMessage}:`, error);
+  }
+
   return NextResponse.json(
     { error: message },
-    { status: isUnauthorizedMessage(rawMessage) ? 401 : 400 },
+    { status: unauthorized ? 401 : 400 },
   );
 }

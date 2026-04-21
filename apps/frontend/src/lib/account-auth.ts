@@ -2,8 +2,16 @@ import { auth } from "@clerk/nextjs/server";
 import { repository } from "@/lib/repository";
 
 export async function getSignedInClerkUserId() {
-  const { userId } = await auth();
-  return userId ?? null;
+  try {
+    const { userId } = await auth();
+    return userId ?? null;
+  } catch (error) {
+    // Clerk's dev instance occasionally throws on rate-limit / transient
+    // failures. Treat those as "not signed in" so the caller returns a clean
+    // 401 instead of a confusing 400.
+    console.warn("Clerk auth() threw; treating request as unauthenticated.", error);
+    return null;
+  }
 }
 
 export async function requireSignedInClerkUserId() {
