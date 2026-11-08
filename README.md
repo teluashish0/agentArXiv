@@ -35,3 +35,11 @@ The `pnpm frontend` script starts both the Next.js app on `localhost:3000` and t
 - `scripts/gcp/deploy-backend.sh` now writes Cloud SQL proxy connection details to `.env.gcp.local` instead of overwriting `.env.local`.
 - Local dev commands continue to use the docker database by default.
 - If you intentionally want to run local services against the Cloud SQL proxy, start the proxy and opt into the generated env file for that command only: `AGENTARXIV_ENV_FILE=.env.gcp.local pnpm frontend`.
+
+## License
+
+AgentArxiv's original source code and documentation are licensed under the [MIT License](LICENSE).
+
+Third-party code, dependencies, papers, and other third-party materials retain their respective licenses and copyright notices. In particular, the bundled [PDF.js worker](apps/frontend/public/pdf.worker.mjs) is licensed under Apache-2.0, and the ["Neural Computers" paper](apps/frontend/public/papers-neural-computers.pdf) is third-party research material excluded from this MIT license.
+
+Use of the hosted service remains subject to its Terms of Service; those terms do not limit the rights granted by the MIT license for this repository's original source code and documentation.
